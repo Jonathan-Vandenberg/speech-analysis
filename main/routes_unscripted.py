@@ -8,7 +8,7 @@ import subprocess
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from .schemas import AnalyzeResponse, PronunciationResult, WordPronunciation, PhonemeScore
-from .utils_text import tokenize_words, normalize_ipa
+from .utils_text import tokenize_words, normalize_ipa, phonemize_words_en
 from .utils_align import align_and_score
 
 router = APIRouter()
@@ -50,18 +50,7 @@ def load_audio_to_mono16k(data: bytes) -> np.ndarray:
 
 
 def phonemize_words(text: str) -> List[List[str]]:
-    words = tokenize_words(text)
-    out: List[List[str]] = []
-    try:
-        from phonemizer import phonemize
-        from phonemizer.separator import Separator
-        for w in words:
-            ipa = phonemize(w, language="en-us", backend="espeak", strip=True, with_stress=False, separator=Separator(phone=" ", word="|"))
-            out.append([p for p in ipa.strip().split() if p])
-    except Exception:
-        for _ in words:
-            out.append([])
-    return out
+    return phonemize_words_en(text)
 
 
 def transcribe_faster_whisper(audio: np.ndarray) -> str:
@@ -93,8 +82,8 @@ async def unscripted(
     # Phonemize both
     pred_words = tokenize_words(predicted_text)
     said_words = tokenize_words(said_text)
-    pred_ipas_words = phonemize_words(" ".join(pred_words))
-    said_ipas_words = phonemize_words(" ".join(said_words))
+    pred_ipas_words = phonemize_words_en(" ".join(pred_words))
+    said_ipas_words = phonemize_words_en(" ".join(said_words))
 
     import difflib
     sm = difflib.SequenceMatcher(a=[w.lower() for w in pred_words], b=[w.lower() for w in said_words])
@@ -108,9 +97,17 @@ async def unscripted(
                 w_text = pred_words[ei]
                 exp_ipas = normalize_ipa(pred_ipas_words[ei]) if ei < len(pred_ipas_words) else []
                 said_ipas = normalize_ipa(said_ipas_words[sj]) if sj < len(said_ipas_words) else []
-                scores, _ = align_and_score(exp_ipas, said_ipas)
-                phonemes = [PhonemeScore(ipa_label=p, phoneme_score=float(scores[i]) if i < len(scores) else 0.0) for i, p in enumerate(exp_ipas)]
-                out_words.append(WordPronunciation(word_text=w_text, phonemes=phonemes, word_score=float(np.mean(scores)) if scores else 0.0))
+                scores, pairs = align_and_score(exp_ipas, said_ipas)
+                phonemes: List[PhonemeScore] = []
+                for a, b, sc in pairs:
+                    if a not in (None, "∅") and b not in (None, "∅") and sc is not None:
+                        phonemes.append(PhonemeScore(ipa_label=a, phoneme_score=float(sc)))
+                    elif a not in (None, "∅") and (b in (None, "∅")):
+                        phonemes.append(PhonemeScore(ipa_label=a, phoneme_score=0.0))
+                    elif (a in (None, "∅")) and b not in (None, "∅"):
+                        phonemes.append(PhonemeScore(ipa_label=b, phoneme_score=0.0))
+                word_scores = [p.phoneme_score for p in phonemes]
+                out_words.append(WordPronunciation(word_text=w_text, phonemes=phonemes, word_score=float(np.mean(word_scores)) if word_scores else 0.0))
         elif tag == "replace":
             exp_indices = list(range(i1, i2))
             said_indices = list(range(j1, j2))
@@ -131,8 +128,17 @@ async def unscripted(
                 used_e.add(ei); used_s.add(sj)
                 w_text = pred_words[ei]
                 exp_ipas = normalize_ipa(pred_ipas_words[ei]) if ei < len(pred_ipas_words) else []
-                phonemes = [PhonemeScore(ipa_label=p, phoneme_score=float(scores[i]) if i < len(scores) else 0.0) for i, p in enumerate(exp_ipas)]
-                out_words.append(WordPronunciation(word_text=w_text, phonemes=phonemes, word_score=float(np.mean(scores)) if scores else 0.0))
+                scores, pairs = align_and_score(exp_ipas, normalize_ipa(said_ipas_words[sj]) if sj < len(said_ipas_words) else [])
+                phonemes: List[PhonemeScore] = []
+                for a, b, sc in pairs:
+                    if a not in (None, "∅") and b not in (None, "∅") and sc is not None:
+                        phonemes.append(PhonemeScore(ipa_label=a, phoneme_score=float(sc)))
+                    elif a not in (None, "∅") and (b in (None, "∅")):
+                        phonemes.append(PhonemeScore(ipa_label=a, phoneme_score=0.0))
+                    elif (a in (None, "∅")) and b not in (None, "∅"):
+                        phonemes.append(PhonemeScore(ipa_label=b, phoneme_score=0.0))
+                word_scores = [p.phoneme_score for p in phonemes]
+                out_words.append(WordPronunciation(word_text=w_text, phonemes=phonemes, word_score=float(np.mean(word_scores)) if word_scores else 0.0))
             for ei in exp_indices:
                 if ei in used_e:
                     continue
