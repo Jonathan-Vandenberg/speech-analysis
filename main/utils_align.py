@@ -56,7 +56,7 @@ def ipa_feature_distance(p1: str, p2: str) -> float:
         # Add slight variance to perfect matches for more realistic scoring
         # Use hash for deterministic "randomness" based on phoneme
         variance = (hash(p1) % 100) / 1000.0  # 0.0-0.099 range
-        distance = min(0.05, variance)  # Cap at 5% distance (95% score)
+        distance = min(0.02, variance)  # Cap at 5% distance (95% score)
         _distance_cache[key] = distance
         return distance
     if (p1, p2) in CONFUSION_SIMILARITY:
