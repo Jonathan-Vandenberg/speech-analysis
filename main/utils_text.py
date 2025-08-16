@@ -98,24 +98,36 @@ def phonemize_words_en(text: str) -> List[List[str]]:
                 if os.path.exists(p):
                     os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = p
                     break
-        # Batch phonemize the entire sentence for efficiency, then split back
-        text_joined = " ".join(words)
-        ipa_full = phonemize(
-            text_joined,
+        # Batch phonemize as a list of words to preserve boundaries reliably
+        ipa_list = phonemize(
+            words,
             language="en-us",
             backend="espeak",
             strip=True,
             with_stress=False,
             separator=Separator(phone=" ", word="|"),
         )
-        # The phonemizer uses '|' between words, so we can split
-        per_word_text = [seg.strip() for seg in ipa_full.split("|")]
-        for seg in per_word_text:
+        if isinstance(ipa_list, str):
+            ipa_list = [ipa_list]
+        # Ensure 1:1 with input words; if library returns fewer/more, fall back per word
+        if len(ipa_list) != len(words):
+            ipa_list = [
+                phonemize(
+                    w,
+                    language="en-us",
+                    backend="espeak",
+                    strip=True,
+                    with_stress=False,
+                    separator=Separator(phone=" ", word="|"),
+                )
+                for w in words
+            ]
+        for seg in ipa_list:
             key = seg
             if key in _phonemize_cache:
                 phones = _phonemize_cache[key]
             else:
-                phones = [p for p in seg.split() if p]
+                phones = [p for p in str(seg).strip().split() if p]
                 _phonemize_cache[key] = phones
             ipa_per_word.append(phones)
         return ipa_per_word
