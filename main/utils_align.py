@@ -83,10 +83,19 @@ def ipa_feature_distance(p1: str, p2: str) -> float:
         val = float(1.0 - (cos_sim + 1.0) / 2.0)
         _distance_cache[key] = val
         return val
-    except Exception:
-        logger.debug("Panphon distance failed for (%s,%s)", p1, p2)
-        _distance_cache[key] = 1.0
-        return 1.0
+    except Exception as exc:
+        # Fallback to simple character comparison for panphon failures
+        if p1 == p2:
+            fallback_val = 0.0
+        elif len(p1) == 1 and len(p2) == 1:
+            # Simple phonetic similarity heuristics
+            fallback_val = 0.5 if abs(ord(p1) - ord(p2)) < 10 else 1.0
+        else:
+            fallback_val = 1.0
+        
+        logger.debug("Panphon distance failed for (%s,%s), using fallback: %f", p1, p2, fallback_val)
+        _distance_cache[key] = fallback_val
+        return fallback_val
 
 
 def align_and_score(expected_ipa: List[str], recognized_ipa: List[str]) -> tuple[List[float], List[tuple[Optional[str], Optional[str], Optional[float]]]]:

@@ -1,4 +1,5 @@
 from typing import Optional, List
+import logging
 
 import numpy as np
 import soundfile as sf
@@ -8,10 +9,82 @@ import subprocess
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from .schemas import AnalyzeResponse, PronunciationResult, WordPronunciation, PhonemeScore
-from .utils_text import tokenize_words, normalize_ipa, phonemize_words_en
+from .utils_text import tokenize_words, normalize_ipa, phonemize_words_en, phonemes_from_audio
 from .utils_align import align_and_score
 
 router = APIRouter()
+logger = logging.getLogger("speech_analyzer")
+
+
+async def analyze_audio_pronunciation(pred_words: List[str], pred_ipas_words: List[List[str]], recognized_phonemes: List[str], predicted_text: str) -> AnalyzeResponse:
+    """Analyze pronunciation using audio-extracted phonemes vs predicted text phonemes."""
+    # Flatten expected phonemes with word boundaries
+    expected_phonemes_flat = []
+    word_boundaries = []  # Track which phoneme belongs to which word
+    
+    for word_idx, word_ipas in enumerate(pred_ipas_words):
+        normalized_ipas = normalize_ipa(word_ipas)
+        for phoneme in normalized_ipas:
+            expected_phonemes_flat.append(phoneme)
+            word_boundaries.append(word_idx)
+    
+    if not expected_phonemes_flat:
+        raise HTTPException(status_code=500, detail="Could not generate expected phonemes from transcription.")
+    
+    # Align recognized phonemes to expected phonemes
+    logger.debug(f"Expected phonemes from transcription: {expected_phonemes_flat}")
+    logger.debug(f"Recognized phonemes from audio: {recognized_phonemes}")
+    scores, pairs = align_and_score(expected_phonemes_flat, recognized_phonemes)
+    logger.debug(f"Alignment pairs: {pairs}")
+    
+    # Group results back into words
+    word_phoneme_data = {}  # word_idx -> list of (phoneme, score)
+    recognized_phoneme_idx = 0
+    
+    for i, (expected_ph, recognized_ph, score) in enumerate(pairs):
+        if expected_ph not in (None, "∅"):
+            # This is an expected phoneme, find which word it belongs to
+            if i < len(word_boundaries):
+                word_idx = word_boundaries[i]
+                if word_idx not in word_phoneme_data:
+                    word_phoneme_data[word_idx] = []
+                
+                if score is not None:
+                    word_phoneme_data[word_idx].append((expected_ph, float(score)))
+                else:
+                    # Deletion (expected but not said)
+                    word_phoneme_data[word_idx].append((expected_ph, 0.0))
+        
+        elif recognized_ph not in (None, "∅"):
+            # Insertion (said but not expected) - penalize in current word context
+            if word_boundaries and recognized_phoneme_idx < len(word_boundaries):
+                word_idx = word_boundaries[min(recognized_phoneme_idx, len(word_boundaries) - 1)]
+                if word_idx not in word_phoneme_data:
+                    word_phoneme_data[word_idx] = []
+                word_phoneme_data[word_idx].append((recognized_ph, 0.0))
+        
+        if recognized_ph not in (None, "∅"):
+            recognized_phoneme_idx += 1
+    
+    # Build output words
+    out_words: List[WordPronunciation] = []
+    for word_idx, word_text in enumerate(pred_words):
+        if word_idx in word_phoneme_data:
+            phoneme_data = word_phoneme_data[word_idx]
+            phonemes = [PhonemeScore(ipa_label=ph, phoneme_score=score) for ph, score in phoneme_data]
+            word_score = float(np.mean([score for _, score in phoneme_data])) if phoneme_data else 0.0
+        else:
+            # Word completely missing
+            expected_ipas = normalize_ipa(pred_ipas_words[word_idx]) if word_idx < len(pred_ipas_words) else []
+            phonemes = [PhonemeScore(ipa_label=ph, phoneme_score=0.0) for ph in expected_ipas]
+            word_score = 0.0
+        
+        out_words.append(WordPronunciation(word_text=word_text, phonemes=phonemes, word_score=word_score))
+    
+    overall = float(np.mean([w.word_score for w in out_words])) if out_words else 0.0
+    recognized_text = " ".join(recognized_phonemes)  # Show what was actually recognized
+    
+    return AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=predicted_text)
 
 
 def load_audio_to_mono16k(data: bytes) -> np.ndarray:
@@ -69,6 +142,7 @@ def transcribe_faster_whisper(audio: np.ndarray) -> str:
 async def unscripted(
     file: UploadFile = File(...),
     browser_transcript: Optional[str] = Form(None),
+    use_audio: bool = Form(False),
 ):
     if file.content_type is None or not (
         file.content_type.startswith("audio/") or file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".webm", ".ogg"))
@@ -76,14 +150,43 @@ async def unscripted(
         raise HTTPException(status_code=400, detail="Please upload an audio file.")
 
     audio = load_audio_to_mono16k(await file.read())
-    predicted_text = transcribe_faster_whisper(audio)
-    said_text = (browser_transcript or predicted_text or "").strip()
+    
+    # Choose between audio transcription or browser transcript based on use_audio flag
+    if use_audio:
+        logger.debug("Using audio mode: Whisper transcription + audio phoneme extraction")
+        # Use Whisper transcription as expected text, extract actual phonemes from audio
+        predicted_text = transcribe_faster_whisper(audio)
+        logger.debug(f"Whisper transcription: {predicted_text}")
+        if not predicted_text.strip():
+            raise HTTPException(status_code=500, detail="Could not transcribe audio. Please check audio quality.")
+        
+        # Extract phonemes directly from audio (actual pronunciation)
+        recognized_phonemes = phonemes_from_audio(audio)
+        if not recognized_phonemes:
+            raise HTTPException(status_code=500, detail="Could not extract phonemes from audio. Please check audio quality.")
+        
+        # Get expected phonemes from transcription
+        pred_words = tokenize_words(predicted_text)
+        pred_ipas_words = phonemize_words_en(" ".join(pred_words))
+        
+        # Use audio-based phoneme analysis (similar to pronunciation mode)
+        return await analyze_audio_pronunciation(pred_words, pred_ipas_words, recognized_phonemes, predicted_text)
+        
+    else:
+        logger.debug("Using browser transcript mode: text-vs-text comparison")
+        # Traditional text-vs-text comparison
+        predicted_text = browser_transcript or ""
+        said_text = (browser_transcript or "").strip()
+        logger.debug(f"Browser transcript: {said_text}")
+        
+        if not said_text:
+            raise HTTPException(status_code=400, detail="No text available - either provide browser_transcript or set use_audio=true")
 
-    # Phonemize both
-    pred_words = tokenize_words(predicted_text)
-    said_words = tokenize_words(said_text)
-    pred_ipas_words = phonemize_words_en(" ".join(pred_words))
-    said_ipas_words = phonemize_words_en(" ".join(said_words))
+        # Phonemize both
+        pred_words = tokenize_words(predicted_text)
+        said_words = tokenize_words(said_text)
+        pred_ipas_words = phonemize_words_en(" ".join(pred_words))
+        said_ipas_words = phonemize_words_en(" ".join(said_words))
 
     import difflib
     sm = difflib.SequenceMatcher(a=[w.lower() for w in pred_words], b=[w.lower() for w in said_words])
