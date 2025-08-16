@@ -241,7 +241,24 @@ async def pronunciation(
             out_words.append(WordPronunciation(word_text=word_text, phonemes=phonemes, word_score=word_score))
         
         overall = float(np.mean([w.word_score for w in out_words])) if out_words else 0.0
-        recognized_text = " ".join(recognized_phonemes)  # Show what was actually recognized
+        
+        # Create a more readable predicted text that preserves word boundaries
+        predicted_words = []
+        for word_idx, word_text in enumerate(exp_words):
+            if word_idx in word_phoneme_data:
+                word_phonemes = [ph for ph, _ in word_phoneme_data[word_idx] if ph not in (None, "∅")]
+                if word_phonemes:
+                    predicted_words.append("/".join(word_phonemes))
+                else:
+                    predicted_words.append("∅")
+            else:
+                predicted_words.append("∅")
+        
+        # Fallback to simple phoneme sequence if word grouping fails
+        if not predicted_words or all(w == "∅" for w in predicted_words):
+            recognized_text = " ".join(recognized_phonemes)
+        else:
+            recognized_text = " | ".join(predicted_words)
         
         return AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=recognized_text)
         
