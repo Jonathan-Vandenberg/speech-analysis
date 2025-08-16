@@ -63,8 +63,8 @@ async def scripted(
     ):
         raise HTTPException(status_code=400, detail="Please upload an audio file.")
 
-    # We only use the audio for timing later if needed; for now, text-vs-text scoring only (fast path)
-    _ = load_audio_to_mono16k(await file.read())
+    # Fast path: avoid decoding the audio when we only evaluate text vs text
+    # If audio timing is needed later, re-enable decoding.
 
     said_text = (browser_transcript or "").strip()
     if not said_text:

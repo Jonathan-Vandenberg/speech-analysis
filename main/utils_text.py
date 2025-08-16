@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from typing import List
+from typing import List, Dict, Tuple
 import logging
 
 logger = logging.getLogger("speech_analyzer")
@@ -77,6 +77,9 @@ def arpabet_tokens_to_ipa(tokens: List[str]) -> List[str]:
     return out
 
 
+_phonemize_cache: Dict[str, List[str]] = {}
+
+
 def phonemize_words_en(text: str) -> List[List[str]]:
     words = tokenize_words(text)
     ipa_per_word: List[List[str]] = []
@@ -95,16 +98,25 @@ def phonemize_words_en(text: str) -> List[List[str]]:
                 if os.path.exists(p):
                     os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = p
                     break
-        for w in words:
-            ipa = phonemize(
-                w,
-                language="en-us",
-                backend="espeak",
-                strip=True,
-                with_stress=False,
-                separator=Separator(phone=" ", word="|"),
-            )
-            phones = [p for p in ipa.strip().split() if p]
+        # Batch phonemize the entire sentence for efficiency, then split back
+        text_joined = " ".join(words)
+        ipa_full = phonemize(
+            text_joined,
+            language="en-us",
+            backend="espeak",
+            strip=True,
+            with_stress=False,
+            separator=Separator(phone=" ", word="|"),
+        )
+        # The phonemizer uses '|' between words, so we can split
+        per_word_text = [seg.strip() for seg in ipa_full.split("|")]
+        for seg in per_word_text:
+            key = seg
+            if key in _phonemize_cache:
+                phones = _phonemize_cache[key]
+            else:
+                phones = [p for p in seg.split() if p]
+                _phonemize_cache[key] = phones
             ipa_per_word.append(phones)
         return ipa_per_word
     except Exception as exc:
@@ -123,9 +135,14 @@ def phonemize_words_en(text: str) -> List[List[str]]:
         except Exception as exc_nltk:
             logger.warning("NLTK bootstrap issue: %s", exc_nltk)
         g2p = G2p()
+        # Cache results per word to avoid recomputation across calls
         for w in words:
+            if w in _phonemize_cache:
+                ipa_per_word.append(_phonemize_cache[w])
+                continue
             arpa = [t for t in g2p(w) if re.fullmatch(r"[A-Za-z]+\d?", t)]
             ipa = arpabet_tokens_to_ipa(arpa)
+            _phonemize_cache[w] = ipa
             ipa_per_word.append(ipa)
         return ipa_per_word
     except Exception as exc:

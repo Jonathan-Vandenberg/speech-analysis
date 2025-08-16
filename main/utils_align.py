@@ -28,28 +28,44 @@ CONFUSION_SIMILARITY: dict[tuple[str, str], float] = {
 }
 
 
+_distance_cache: dict[tuple[str, str], float] = {}
+
+
 def ipa_feature_distance(p1: str, p2: str) -> float:
+    key = (p1, p2)
+    if key in _distance_cache:
+        return _distance_cache[key]
     ft = _lazy_feature_table()
     if p1 == p2:
+        _distance_cache[key] = 0.0
         return 0.0
     if (p1, p2) in CONFUSION_SIMILARITY:
-        return 1.0 - CONFUSION_SIMILARITY[(p1, p2)]
+        val = 1.0 - CONFUSION_SIMILARITY[(p1, p2)]
+        _distance_cache[key] = val
+        return val
     if (p2, p1) in CONFUSION_SIMILARITY:
-        return 1.0 - CONFUSION_SIMILARITY[(p2, p1)]
+        val = 1.0 - CONFUSION_SIMILARITY[(p2, p1)]
+        _distance_cache[key] = val
+        return val
     try:
         v1_list = ft.word_to_vector_list(p1)
         v2_list = ft.word_to_vector_list(p2)
         if not v1_list or not v2_list:
+            _distance_cache[key] = 1.0
             return 1.0
         v1 = np.mean(np.array(v1_list, dtype=float), axis=0)
         v2 = np.mean(np.array(v2_list, dtype=float), axis=0)
         denom = (np.linalg.norm(v1) * np.linalg.norm(v2))
         if denom == 0:
+            _distance_cache[key] = 1.0
             return 1.0
         cos_sim = float(np.dot(v1, v2) / denom)
-        return float(1.0 - (cos_sim + 1.0) / 2.0)
+        val = float(1.0 - (cos_sim + 1.0) / 2.0)
+        _distance_cache[key] = val
+        return val
     except Exception:
         logger.debug("Panphon distance failed for (%s,%s)", p1, p2)
+        _distance_cache[key] = 1.0
         return 1.0
 
 
