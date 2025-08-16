@@ -1,7 +1,8 @@
 import re
 import unicodedata
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import logging
+import numpy as np
 
 logger = logging.getLogger("speech_analyzer")
 
@@ -89,14 +90,18 @@ def phonemize_words_en(text: str) -> List[List[str]]:
         from phonemizer.separator import Separator
         # Attempt to help locate espeak-ng on macOS Homebrew installs
         import os
+        import glob
         if not os.environ.get("PHONEMIZER_ESPEAK_LIBRARY"):
             for p in (
-                "/opt/homebrew/opt/espeak-ng/lib/libespeak-ng.dylib",
+                "/opt/homebrew/Cellar/espeak-ng/*/lib/libespeak-ng.1.dylib",
+                "/opt/homebrew/lib/libespeak-ng.1.dylib",
                 "/opt/homebrew/lib/libespeak-ng.dylib",
                 "/usr/local/lib/libespeak-ng.dylib",
             ):
-                if os.path.exists(p):
-                    os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = p
+                matches = glob.glob(p)
+                if matches:
+                    os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = matches[0]
+                    logger.info(f"Found espeak-ng library at: {matches[0]}")
                     break
         # Batch phonemize as a list of words to preserve boundaries reliably
         ipa_list = phonemize(
@@ -160,6 +165,73 @@ def phonemize_words_en(text: str) -> List[List[str]]:
     except Exception as exc:
         logger.warning("g2p_en fallback failed: %s", exc)
         return [[] for _ in words]
+
+
+# Phoneme recognition from audio using wav2vec2
+_phoneme_processor: Optional[object] = None
+_phoneme_model: Optional[object] = None
+
+
+def _lazy_wav2vec2_phoneme():
+    """Load wav2vec2 phoneme recognition model lazily."""
+    global _phoneme_processor, _phoneme_model
+    if _phoneme_processor is None or _phoneme_model is None:
+        try:
+            # Set up espeak-ng path if needed
+            import os
+            import glob
+            if not os.environ.get("PHONEMIZER_ESPEAK_LIBRARY"):
+                for p in (
+                    "/opt/homebrew/Cellar/espeak-ng/*/lib/libespeak-ng.1.dylib",
+                    "/opt/homebrew/lib/libespeak-ng.1.dylib",
+                    "/opt/homebrew/lib/libespeak-ng.dylib",
+                    "/usr/local/lib/libespeak-ng.dylib",
+                ):
+                    matches = glob.glob(p)
+                    if matches:
+                        os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = matches[0]
+                        logger.info(f"Found espeak-ng library at: {matches[0]}")
+                        break
+            
+            from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+            _phoneme_processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-lv-60-espeak-cv-ft")
+            _phoneme_model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-lv-60-espeak-cv-ft")
+            _phoneme_model.eval()
+            logger.info("Loaded wav2vec2 phoneme recognition model")
+        except Exception as exc:
+            logger.warning("Failed to load wav2vec2 phoneme model: %s", exc)
+            raise
+    return _phoneme_processor, _phoneme_model
+
+
+def phonemes_from_audio(audio_16k: np.ndarray) -> List[str]:
+    """Extract phonemes directly from 16kHz mono audio using wav2vec2."""
+    try:
+        import torch
+        processor, model = _lazy_wav2vec2_phoneme()
+        
+        with torch.no_grad():
+            inputs = processor(audio_16k, sampling_rate=16000, return_tensors="pt", padding=True)
+            logits = model(inputs.input_values).logits
+            ids = torch.argmax(logits, dim=-1)
+            text = processor.batch_decode(ids)[0]  # space-separated phones (espeak set)
+        
+        # Extract individual phonemes, filter out word boundaries and empty tokens
+        phones = [p for p in text.strip().split() if p and p != "|"]
+        
+        # Convert espeak phonemes to normalized IPA
+        ipa_phones = []
+        for phone in phones:
+            # Basic espeak to IPA mapping - can be expanded
+            normalized = phone.replace("tS", "tʃ").replace("dZ", "dʒ").replace("@", "ə")
+            if normalized:
+                ipa_phones.append(normalized)
+        
+        return normalize_ipa(ipa_phones)
+        
+    except Exception as exc:
+        logger.warning("Phoneme recognition from audio failed: %s", exc)
+        return []
 
 
 
