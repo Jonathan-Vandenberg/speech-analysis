@@ -1,14 +1,17 @@
 from typing import Optional, List
 import logging
+import re
+from collections import Counter
 
 import numpy as np
 import soundfile as sf
 import io
 import tempfile
 import subprocess
+import librosa
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from .schemas import AnalyzeResponse, PronunciationResult, WordPronunciation, PhonemeScore
+from .schemas import AnalyzeResponse, PronunciationResult, WordPronunciation, PhonemeScore, SpeechMetrics, PauseDetail, DiscourseMarker, FillerWordDetail, Repetition
 from .utils_text import tokenize_words, normalize_ipa, phonemize_words_en, phonemes_from_audio
 from .utils_align import align_and_score
 
@@ -16,7 +19,7 @@ router = APIRouter()
 logger = logging.getLogger("speech_analyzer")
 
 
-async def analyze_audio_pronunciation(pred_words: List[str], pred_ipas_words: List[List[str]], recognized_phonemes: List[str], predicted_text: str) -> AnalyzeResponse:
+async def analyze_audio_pronunciation(pred_words: List[str], pred_ipas_words: List[List[str]], recognized_phonemes: List[str], predicted_text: str, audio: Optional[np.ndarray] = None, deep_analysis: bool = False) -> AnalyzeResponse:
     """Analyze pronunciation using audio-extracted phonemes vs predicted text phonemes."""
     # Flatten expected phonemes with word boundaries
     expected_phonemes_flat = []
@@ -84,7 +87,13 @@ async def analyze_audio_pronunciation(pred_words: List[str], pred_ipas_words: Li
     overall = float(np.mean([w.word_score for w in out_words])) if out_words else 0.0
     recognized_text = " ".join(recognized_phonemes)  # Show what was actually recognized
     
-    return AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=predicted_text)
+    # Perform deep analysis if requested and audio is available
+    metrics = None
+    if deep_analysis and audio is not None:
+        logger.debug("Performing deep speech fluency analysis in audio mode")
+        metrics = analyze_speech_fluency(predicted_text, audio, sr=16000)
+    
+    return AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=predicted_text, metrics=metrics)
 
 
 def load_audio_to_mono16k(data: bytes) -> np.ndarray:
@@ -138,11 +147,308 @@ def transcribe_faster_whisper(audio: np.ndarray) -> str:
     return " ".join(t.strip() for t in texts).strip()
 
 
+def detect_pauses(audio: np.ndarray, sr: int = 16000, min_pause_duration: float = 1.0) -> List[PauseDetail]:
+    """Detect pauses in speech (silence > 1 second)."""
+    # Use librosa to detect non-silent intervals
+    intervals = librosa.effects.split(audio, top_db=20, frame_length=2048, hop_length=512)
+    
+    pauses = []
+    if len(intervals) > 1:
+        for i in range(len(intervals) - 1):
+            # Calculate pause between current interval end and next interval start
+            current_end = intervals[i][1]
+            next_start = intervals[i + 1][0]
+            
+            pause_frames = next_start - current_end
+            pause_duration = pause_frames / sr
+            
+            if pause_duration >= min_pause_duration:
+                # Convert frame indices to character indices (approximate)
+                # This is rough - in real implementation you'd need word-level timestamps
+                start_char = int(current_end * 0.05)  # Rough approximation
+                end_char = start_char
+                
+                pauses.append(PauseDetail(
+                    start_index=start_char,
+                    end_index=end_char,
+                    duration=round(pause_duration, 1)
+                ))
+    
+    return pauses
+
+
+def detect_filler_words(text: str, phonemes_list: List[str]) -> tuple[List[FillerWordDetail], int]:
+    """Detect filler words based on phoneme patterns and context."""
+    filler_patterns = {
+        ('ʌ',): 'uh',
+        ('ʌ', 'm'): 'um', 
+        ('h', 'ə', 'm'): 'hmm',
+        ('ə', 'm'): 'em',
+        ('ə',): 'uh',
+        ('m', 'h', 'm'): 'mhm'
+    }
+    
+    filler_words = []
+    text_words = text.lower().split()
+    
+    # Clear filler words that are almost always fillers
+    definite_fillers = ['uh', 'um', 'hmm', 'er', 'ah', 'mm', 'erm']
+    
+    char_idx = 0
+    for i, word in enumerate(text_words):
+        clean_word = word.strip('.,!?')
+        
+        # Always mark definite fillers
+        if clean_word in definite_fillers:
+            filler_words.append(FillerWordDetail(
+                text=word,
+                start_index=char_idx,
+                end_index=char_idx + len(word),
+                phonemes=clean_word
+            ))
+        
+        # Context-aware detection for "like"
+        elif clean_word == 'like':
+            is_filler = is_like_filler(text_words, i)
+            if is_filler:
+                filler_words.append(FillerWordDetail(
+                    text=word,
+                    start_index=char_idx,
+                    end_index=char_idx + len(word),
+                    phonemes=clean_word
+                ))
+        
+        # Context-aware detection for "you know"
+        elif clean_word == 'you' and i + 1 < len(text_words) and text_words[i + 1].strip('.,!?') == 'know':
+            # "you know" as filler usually appears at sentence boundaries or with hesitation
+            if is_you_know_filler(text_words, i):
+                filler_words.append(FillerWordDetail(
+                    text=f"{word} {text_words[i + 1]}",
+                    start_index=char_idx,
+                    end_index=char_idx + len(word) + 1 + len(text_words[i + 1]),
+                    phonemes="you know"
+                ))
+        
+        char_idx += len(word) + 1  # +1 for space
+    
+    return filler_words, len(filler_words)
+
+
+def is_like_filler(words: List[str], like_index: int) -> bool:
+    """Determine if 'like' is being used as a filler word based on context."""
+    # Get surrounding context
+    prev_word = words[like_index - 1].strip('.,!?').lower() if like_index > 0 else ""
+    next_word = words[like_index + 1].strip('.,!?').lower() if like_index + 1 < len(words) else ""
+    
+    # "like" is likely a filler if:
+    
+    # 1. Followed by another filler or hesitation
+    if next_word in ['uh', 'um', 'er', 'ah']:
+        return True
+    
+    # 2. Used in quotative speech patterns: "I was like", "she was like"
+    if prev_word in ['was', 'am', 'is', 'were']:
+        return True
+    
+    # 3. Used as discourse marker: "like, you know", "like, totally"
+    if next_word in ['you', 'totally', 'really', 'literally']:
+        return True
+    
+    # 4. Repeated "like" (hesitation pattern)
+    if (like_index > 0 and words[like_index - 1].strip('.,!?').lower() == 'like') or \
+       (like_index + 1 < len(words) and words[like_index + 1].strip('.,!?').lower() == 'like'):
+        return True
+    
+    # 5. At the beginning of utterances (discourse marker)
+    if like_index == 0 or prev_word in ['.', '!', '?', ',']:
+        return True
+    
+    # Otherwise, it's likely legitimate usage: "I like pizza", "it looks like rain"
+    return False
+
+
+def is_you_know_filler(words: List[str], you_index: int) -> bool:
+    """Determine if 'you know' is being used as a filler phrase."""
+    # Get surrounding context
+    prev_word = words[you_index - 1].strip('.,!?').lower() if you_index > 0 else ""
+    next_word = words[you_index + 2].strip('.,!?').lower() if you_index + 2 < len(words) else ""
+    
+    # "you know" is likely a filler if:
+    
+    # 1. At sentence boundaries (pause markers)
+    if prev_word in ['.', '!', '?', ''] or next_word in ['.', '!', '?', '']:
+        return True
+    
+    # 2. Surrounded by commas (parenthetical)
+    if prev_word.endswith(',') or next_word.startswith(','):
+        return True
+    
+    # 3. Followed by other fillers
+    if next_word in ['like', 'uh', 'um']:
+        return True
+    
+    # Otherwise might be legitimate: "Do you know the answer?"
+    return False
+
+
+def detect_repetitions(text: str) -> List[Repetition]:
+    """Detect repeated words or short phrases."""
+    words = text.lower().split()
+    repetitions = []
+    
+    # Look for consecutive repeated words
+    i = 0
+    while i < len(words) - 1:
+        current_word = words[i].strip('.,!?')
+        count = 1
+        j = i + 1
+        
+        # Count consecutive repetitions
+        while j < len(words) and words[j].strip('.,!?') == current_word:
+            count += 1
+            j += 1
+            
+        if count > 1:  # Found repetition
+            # Calculate character indices
+            start_idx = sum(len(words[k]) + 1 for k in range(i))
+            end_idx = start_idx + sum(len(words[k]) + 1 for k in range(i, j)) - 1
+            
+            repetitions.append(Repetition(
+                text=current_word,
+                start_index=start_idx,
+                end_index=end_idx,
+                repeat_count=count
+            ))
+            i = j
+        else:
+            i += 1
+            
+    return repetitions
+
+
+def calculate_speech_rate(text: str, audio: np.ndarray, sr: int = 16000) -> tuple[float, List[float]]:
+    """Calculate overall speech rate and speech rate over time."""
+    # Remove silence to get actual speaking time
+    audio_trimmed, _ = librosa.effects.trim(audio, top_db=20)
+    duration_seconds = len(audio_trimmed) / sr
+    
+    # Get detected filler words using context-aware detection
+    phonemes = []  # Not used for speech rate, but required by function signature
+    filler_details, _ = detect_filler_words(text, phonemes)
+    
+    # Create set of detected filler word positions for efficient lookup
+    filler_positions = set()
+    for filler in filler_details:
+        # Calculate word positions based on character indices
+        words_before = text[:filler.start_index].split()
+        filler_positions.add(len(words_before))
+    
+    # Count words (excluding contextually-detected filler words)
+    words = text.split()
+    content_words = []
+    for i, word in enumerate(words):
+        if i not in filler_positions:
+            content_words.append(word)
+    
+    if duration_seconds == 0:
+        return 0.0, []
+    
+    # Words per minute
+    overall_rate = (len(content_words) / duration_seconds) * 60
+    
+    # Calculate rate over time (in chunks)
+    chunk_duration = 3.0  # 3-second chunks
+    chunks = int(duration_seconds / chunk_duration)
+    rate_over_time = []
+    
+    if chunks > 0:
+        words_per_chunk = len(content_words) / chunks
+        for i in range(chunks):
+            # Simple approximation - in reality you'd need word-level timestamps
+            chunk_rate = (words_per_chunk / chunk_duration) * 60
+            rate_over_time.append(round(chunk_rate))
+    
+    return round(overall_rate), rate_over_time
+
+
+def detect_discourse_markers(text: str) -> List[DiscourseMarker]:
+    """Detect discourse markers (connecting words/phrases)."""
+    markers_map = {
+        'and': 'adding information',
+        'but': 'contrasting',
+        'however': 'contrasting', 
+        'therefore': 'concluding',
+        'so': 'concluding',
+        'first': 'sequencing',
+        'then': 'sequencing',
+        'next': 'sequencing',
+        'finally': 'concluding',
+        'also': 'adding information',
+        'furthermore': 'adding information',
+        'moreover': 'adding information'
+    }
+    
+    discourse_markers = []
+    words = text.split()
+    char_idx = 0
+    
+    for word in words:
+        clean_word = word.lower().strip('.,!?')
+        if clean_word in markers_map:
+            discourse_markers.append(DiscourseMarker(
+                text=clean_word,
+                start_index=char_idx,
+                end_index=char_idx + len(clean_word),
+                description=markers_map[clean_word]
+            ))
+        char_idx += len(word) + 1
+    
+    return discourse_markers
+
+
+def analyze_speech_fluency(text: str, audio: np.ndarray, sr: int = 16000) -> SpeechMetrics:
+    """Perform comprehensive speech fluency analysis."""
+    # Get phonemes for filler word detection
+    phonemes = phonemes_from_audio(audio)
+    
+    # Detect pauses
+    pauses = detect_pauses(audio, sr)
+    
+    # Detect filler words
+    filler_details, filler_count = detect_filler_words(text, phonemes)
+    
+    # Detect repetitions
+    repetitions = detect_repetitions(text)
+    
+    # Calculate speech rate
+    speech_rate, rate_over_time = calculate_speech_rate(text, audio, sr)
+    
+    # Detect discourse markers
+    discourse_markers = detect_discourse_markers(text)
+    
+    # Calculate filler words per minute
+    audio_duration_min = len(audio) / sr / 60
+    filler_words_per_min = filler_count / audio_duration_min if audio_duration_min > 0 else 0
+    
+    return SpeechMetrics(
+        speech_rate=speech_rate,
+        speech_rate_over_time=rate_over_time,
+        pauses=len(pauses),
+        filler_words=filler_count,
+        discourse_markers=discourse_markers,
+        filler_words_per_min=round(filler_words_per_min, 1),
+        pause_details=pauses,
+        repetitions=repetitions,
+        filler_words_details=filler_details
+    )
+
+
 @router.post("/unscripted", response_model=AnalyzeResponse)
 async def unscripted(
     file: UploadFile = File(...),
     browser_transcript: Optional[str] = Form(None),
     use_audio: bool = Form(False),
+    deep_analysis: bool = Form(False),
 ):
     if file.content_type is None or not (
         file.content_type.startswith("audio/") or file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".webm", ".ogg"))
@@ -170,7 +476,7 @@ async def unscripted(
         pred_ipas_words = phonemize_words_en(" ".join(pred_words))
         
         # Use audio-based phoneme analysis (similar to pronunciation mode)
-        return await analyze_audio_pronunciation(pred_words, pred_ipas_words, recognized_phonemes, predicted_text)
+        return await analyze_audio_pronunciation(pred_words, pred_ipas_words, recognized_phonemes, predicted_text, audio, deep_analysis)
         
     else:
         logger.debug("Using browser transcript mode: text-vs-text comparison")
@@ -251,6 +557,11 @@ async def unscripted(
                 out_words.append(WordPronunciation(word_text=w_text, phonemes=phonemes, word_score=0.0))
 
     overall = float(np.mean([w.word_score for w in out_words])) if out_words else 0.0
-    return AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=predicted_text)
+    
+    return AnalyzeResponse(
+        pronunciation=PronunciationResult(words=out_words, overall_score=overall), 
+        predicted_text=predicted_text,
+        metrics=None  # Deep analysis is only available with audio mode
+    )
 
 
