@@ -93,7 +93,7 @@ def ipa_feature_distance(p1: str, p2: str) -> float:
         else:
             fallback_val = 1.0
         
-        logger.debug("Panphon distance failed for (%s,%s), using fallback: %f", p1, p2, fallback_val)
+        logger.debug("Panphon fallback for (%s,%s): %f", p1, p2, fallback_val)  # Shortened debug message
         _distance_cache[key] = fallback_val
         return fallback_val
 

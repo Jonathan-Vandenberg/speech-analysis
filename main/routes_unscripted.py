@@ -179,33 +179,58 @@ def detect_pauses(audio: np.ndarray, sr: int = 16000, min_pause_duration: float 
 
 def detect_filler_words(text: str, phonemes_list: List[str]) -> tuple[List[FillerWordDetail], int]:
     """Detect filler words based on phoneme patterns and context."""
-    filler_patterns = {
-        ('ʌ',): 'uh',
-        ('ʌ', 'm'): 'um', 
+    # Balanced filler phoneme patterns - multi-phoneme sequences and some standalone vowels
+    filler_patterns = {        
+        # "Um" sounds (most reliable - vowel + m combination)
+        ('ʌ', 'm'): 'um',
+        ('ə', 'm'): 'um', 
+        ('ʊ', 'm'): 'um',
+        ('a', 'm'): 'um',
+        
+        # "Hmm" sounds (consonant combinations)
         ('h', 'ə', 'm'): 'hmm',
-        ('ə', 'm'): 'em',
-        ('ə',): 'uh',
-        ('m', 'h', 'm'): 'mhm'
+        ('h', 'm'): 'hmm',
+        ('m', 'm'): 'hmm',
+        
+        # "Er" sounds - but only longer patterns to avoid "water", "her" issues
+        ('ɚ', 'r'): 'er',   # More specific pattern
+        ('ə', 'r'): 'er',   # Schwa + r
+        
+        # Single vowel patterns (for very clear standalone hesitations)
+        ('ʌ',): 'uh',   # Most common "uh" sound 
+        ('ə',): 'uh',   # Schwa "uh" 
+        ('a',): 'ah',   # "Ah" hesitation
     }
+    
+    # Note: Single phoneme patterns are now included in filler_patterns above
     
     filler_words = []
     text_words = text.lower().split()
     
-    # Clear filler words that are almost always fillers
-    definite_fillers = ['uh', 'um', 'hmm', 'er', 'ah', 'mm', 'erm']
+    # First: Detect filler sounds directly from phonemes (more sensitive)
+    logger.debug(f"Starting phoneme-based filler detection with {len(phonemes_list)} phonemes")
+    logger.debug(f"Available patterns: {list(filler_patterns.keys())}")
+    phoneme_fillers = detect_phoneme_fillers(phonemes_list, filler_patterns)
+    logger.debug(f"Phoneme-based detection found {len(phoneme_fillers)} fillers")
+    filler_words.extend(phoneme_fillers)
+    
+    # Second: Text-based detection for words Whisper did transcribe
+    definite_fillers = ['uh', 'um', 'hmm', 'er', 'ah', 'mm', 'erm', 'eh', 'oh']
     
     char_idx = 0
     for i, word in enumerate(text_words):
         clean_word = word.strip('.,!?')
         
-        # Always mark definite fillers
+        # Always mark definite fillers in text
         if clean_word in definite_fillers:
-            filler_words.append(FillerWordDetail(
-                text=word,
-                start_index=char_idx,
-                end_index=char_idx + len(word),
-                phonemes=clean_word
-            ))
+            # Avoid duplicates from phoneme detection
+            if not any(f.text.lower() == clean_word and abs(f.start_index - char_idx) < 10 for f in filler_words):
+                filler_words.append(FillerWordDetail(
+                    text=word,
+                    start_index=char_idx,
+                    end_index=char_idx + len(word),
+                    phonemes=clean_word
+                ))
         
         # Context-aware detection for "like"
         elif clean_word == 'like':
@@ -220,7 +245,6 @@ def detect_filler_words(text: str, phonemes_list: List[str]) -> tuple[List[Fille
         
         # Context-aware detection for "you know"
         elif clean_word == 'you' and i + 1 < len(text_words) and text_words[i + 1].strip('.,!?') == 'know':
-            # "you know" as filler usually appears at sentence boundaries or with hesitation
             if is_you_know_filler(text_words, i):
                 filler_words.append(FillerWordDetail(
                     text=f"{word} {text_words[i + 1]}",
@@ -231,7 +255,184 @@ def detect_filler_words(text: str, phonemes_list: List[str]) -> tuple[List[Fille
         
         char_idx += len(word) + 1  # +1 for space
     
-    return filler_words, len(filler_words)
+    # Sort by position and remove near duplicates
+    filler_words.sort(key=lambda x: x.start_index)
+    unique_fillers = []
+    for filler in filler_words:
+        if not any(abs(filler.start_index - existing.start_index) < 5 for existing in unique_fillers):
+            unique_fillers.append(filler)
+    
+    return unique_fillers, len(unique_fillers)
+
+
+def detect_phoneme_fillers(phonemes: List[str], patterns: dict) -> List[FillerWordDetail]:
+    """Detect filler words directly from phoneme sequences."""
+    detected_fillers = []
+    
+    if not phonemes:
+        logger.debug("No phonemes provided for filler detection")
+        return detected_fillers
+    
+    logger.debug(f"Scanning {len(phonemes)} phonemes for filler patterns")
+    
+    i = 0
+    while i < len(phonemes):
+        # Check for multi-phoneme patterns first (longest first)
+        max_pattern_len = min(3, len(phonemes) - i)
+        found_pattern = False
+        
+        for pattern_len in range(max_pattern_len, 0, -1):  # Start from longest patterns down to 1
+            if i + pattern_len <= len(phonemes):
+                phoneme_seq = tuple(phonemes[i:i + pattern_len])
+                
+                if phoneme_seq in patterns:
+                    filler_text = patterns[phoneme_seq]
+                    estimated_char_pos = i * 3
+                    
+                    # Additional check: make sure this isn't part of a longer word sequence
+                    # For single phonemes, use stricter isolation checking
+                    is_standalone = True
+                    if pattern_len == 1:
+                        is_standalone = is_phoneme_isolated(phonemes, i)
+                        logger.debug(f"Single phoneme '{phonemes[i]}' isolation check: {is_standalone}")
+                    else:
+                        is_standalone = is_likely_standalone_filler(phonemes, i, pattern_len)
+                        logger.debug(f"Multi-phoneme pattern {phoneme_seq} standalone check: {is_standalone}")
+                    
+                    if is_standalone:
+                        logger.debug(f"Found filler pattern {phoneme_seq} -> '{filler_text}' at position {i}")
+                        
+                        detected_fillers.append(FillerWordDetail(
+                            text=filler_text,
+                            start_index=estimated_char_pos,
+                            end_index=estimated_char_pos + len(filler_text),
+                            phonemes='/'.join(phoneme_seq)
+                        ))
+                        
+                        i += pattern_len
+                        found_pattern = True
+                        break
+                    else:
+                        logger.debug(f"Pattern {phoneme_seq} found but not considered standalone - skipping")
+        
+        # No need for separate isolated pattern checking since single patterns are now in main patterns
+        
+        if not found_pattern:
+            i += 1
+    
+    logger.debug(f"Detected {len(detected_fillers)} filler words from phonemes")
+    return detected_fillers
+
+
+def is_likely_standalone_filler(phonemes: List[str], start_index: int, pattern_length: int) -> bool:
+    """Check if a multi-phoneme pattern is likely a standalone filler rather than part of a word."""
+    
+    pattern_phonemes = phonemes[start_index:start_index + pattern_length]
+    
+    # For "um" patterns (vowel + m), be very lenient - they're highly reliable
+    if len(pattern_phonemes) == 2 and pattern_phonemes[1] == 'm':
+        # "vowel + m" combinations are almost always fillers
+        logger.debug(f"Found vowel+m pattern {pattern_phonemes} - highly likely to be filler")
+        return True
+    
+    # For "hmm" patterns, also be lenient
+    if 'h' in pattern_phonemes and 'm' in pattern_phonemes:
+        logger.debug(f"Found h+m pattern {pattern_phonemes} - likely filler")
+        return True
+    
+    # For "er" patterns, be more careful but still allow them
+    if len(pattern_phonemes) == 2 and pattern_phonemes[1] == 'r':
+        # Look at wider context to see if this might be part of a word like "water"
+        context_window = 3
+        before_start = max(0, start_index - context_window)
+        after_end = min(len(phonemes), start_index + pattern_length + context_window)
+        
+        # Check if surrounded by many phonemes (indicating it's part of a longer word)
+        phonemes_before = phonemes[before_start:start_index]
+        phonemes_after = phonemes[start_index + pattern_length:after_end]
+        
+        # If there are 3+ phonemes on both sides, probably part of a word
+        if len(phonemes_before) >= 3 and len(phonemes_after) >= 3:
+            logger.debug(f"Er pattern {pattern_phonemes} surrounded by many phonemes - might be part of word")
+            return False
+        
+        logger.debug(f"Er pattern {pattern_phonemes} appears isolated enough - likely filler")
+        return True
+    
+    # For other patterns, be moderately permissive
+    return True
+
+
+def is_phoneme_isolated(phonemes: List[str], index: int) -> bool:
+    """Check if a phoneme appears isolated (likely to be a filler).
+    
+    Balanced approach - detects genuine fillers while avoiding parts of words.
+    """
+    phoneme = phonemes[index]
+    
+    # For consonants like 'm', be more permissive as they're often standalone fillers
+    if phoneme == 'm':
+        # Look for gaps or pauses around the 'm' sound
+        prev_phoneme = phonemes[index - 1] if index > 0 else None
+        next_phoneme = phonemes[index + 1] if index + 1 < len(phonemes) else None
+        
+        # If it's at boundaries, likely isolated
+        if index == 0 or index == len(phonemes) - 1:
+            return True
+        
+        # If surrounded by vowels without consonants, might be part of a word
+        vowels = {'a', 'e', 'i', 'o', 'u', 'ə', 'ɪ', 'ɛ', 'æ', 'ɑ', 'ɔ', 'ʌ', 'ʊ', 'ɜ', 'ɐ'}
+        if prev_phoneme in vowels and next_phoneme in vowels:
+            # But 'VmV' pattern could still be a filler, check context
+            return len(phonemes) > 10  # Only in longer sequences
+        return True
+    
+    # For vowels (ʌ, ə), use more nuanced detection
+    if phoneme in {'ʌ', 'ə'}:
+        # These are the most common hesitation sounds
+        
+        # Look at immediate neighbors
+        prev_phoneme = phonemes[index - 1] if index > 0 else None
+        next_phoneme = phonemes[index + 1] if index + 1 < len(phonemes) else None
+        
+        # At beginning or end of sequence - likely isolated
+        if index == 0 or index == len(phonemes) - 1:
+            return True
+        
+        # Check for patterns that suggest it's NOT part of a word
+        consonants = {'t', 'd', 'k', 'g', 'p', 'b', 'f', 'v', 's', 'z', 'ʃ', 'ʒ', 'tʃ', 'dʒ', 'n', 'l', 'r', 'w', 'j', 'h'}
+        
+        # If preceded by a stop consonant and followed by another consonant -> likely hesitation
+        stop_consonants = {'t', 'd', 'k', 'g', 'p', 'b'}
+        if prev_phoneme in stop_consonants and next_phoneme in consonants:
+            logger.debug(f"Vowel '{phoneme}' between stop consonant and consonant - likely hesitation")
+            return True
+        
+        # If surrounded by pauses or at word boundaries
+        if prev_phoneme in consonants and next_phoneme in consonants:
+            # Check if this looks like part of a consonant cluster vs isolated
+            # Look at wider context
+            context_before = phonemes[max(0, index-2):index]
+            context_after = phonemes[index+1:min(len(phonemes), index+3)]
+            
+            # If there aren't many phonemes clustered around, likely isolated
+            total_context = len(context_before) + len(context_after)
+            if total_context < 3:
+                logger.debug(f"Vowel '{phoneme}' has minimal context - likely isolated")
+                return True
+        
+        # If it's in a long sequence but appears to have gaps around it
+        if len(phonemes) > 8:
+            # Look for evidence of isolation in longer sequences
+            context_window = 3
+            context_phonemes = phonemes[max(0, index-context_window):min(len(phonemes), index+context_window+1)]
+            # If the context window isn't completely full, suggests gaps/pauses
+            if len(context_phonemes) < (context_window * 2 + 1):
+                logger.debug(f"Vowel '{phoneme}' in long sequence with apparent gaps")
+                return True
+    
+    logger.debug(f"Phoneme '{phoneme}' not considered isolated")
+    return False
 
 
 def is_like_filler(words: List[str], like_index: int) -> bool:
@@ -410,12 +611,14 @@ def analyze_speech_fluency(text: str, audio: np.ndarray, sr: int = 16000) -> Spe
     """Perform comprehensive speech fluency analysis."""
     # Get phonemes for filler word detection
     phonemes = phonemes_from_audio(audio)
+    logger.debug(f"Extracted phonemes for filler detection: {phonemes[:20]}...")  # Show first 20 for debugging
     
     # Detect pauses
     pauses = detect_pauses(audio, sr)
     
     # Detect filler words
     filler_details, filler_count = detect_filler_words(text, phonemes)
+    logger.debug(f"Detected {filler_count} filler words: {[f.text for f in filler_details]}")
     
     # Detect repetitions
     repetitions = detect_repetitions(text)
