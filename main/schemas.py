@@ -74,7 +74,7 @@ class GrammarCorrection(BaseModel):
     strengths: List[str]
     improvements: List[str]
     lexical_band_score: float
-    modelAnswers: Dict[str, str]
+    modelAnswers: Dict[str, Dict[str, str]]
     grammar_score: float
 
 
