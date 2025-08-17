@@ -162,6 +162,7 @@ async def pronunciation(
         file.content_type.startswith("audio/") or file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".webm", ".ogg"))
     ):
         raise HTTPException(status_code=400, detail="Please upload an audio file.")
+    print("Audio: VALID")
 
     if not expected_text.strip():
         raise HTTPException(status_code=400, detail="Expected text is required for pronunciation analysis.")
@@ -169,7 +170,7 @@ async def pronunciation(
     try:
         # Load and process audio
         audio = load_audio_to_mono16k(await file.read())
-        
+
         # Extract phonemes directly from audio
         recognized_phonemes = phonemes_from_audio(audio)
         
