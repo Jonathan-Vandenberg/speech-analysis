@@ -70,20 +70,79 @@ def ipa_feature_distance(p1: str, p2: str) -> float:
     try:
         v1_list = ft.word_to_vector_list(p1)
         v2_list = ft.word_to_vector_list(p2)
-        if not v1_list or not v2_list:
-            _distance_cache[key] = 1.0
-            return 1.0
-        v1 = np.mean(np.array(v1_list, dtype=float), axis=0)
-        v2 = np.mean(np.array(v2_list, dtype=float), axis=0)
+        
+        # Handle empty vector lists more intelligently
+        if not v1_list and not v2_list:
+            # Both phonemes unknown to Panphon - use character similarity
+            if p1 == p2:
+                val = 0.0
+            else:
+                val = 0.8  # High distance for unknown phonemes
+            logger.debug("Both phonemes (%s,%s) unknown to Panphon, using character similarity: %f", p1, p2, val)
+            _distance_cache[key] = val
+            return val
+            
+        elif not v1_list or not v2_list:
+            # One phoneme unknown - try to normalize it
+            unknown_phoneme = p1 if not v1_list else p2
+            known_phoneme = p2 if not v1_list else p1
+            
+            # Try common normalizations for unknown phonemes
+            normalized = normalize_unknown_phoneme(unknown_phoneme)
+            if normalized != unknown_phoneme:
+                logger.debug("Normalized unknown phoneme %s to %s", unknown_phoneme, normalized)
+                # Retry with normalized phoneme
+                return ipa_feature_distance(normalized if not v1_list else known_phoneme, 
+                                          known_phoneme if not v1_list else normalized)
+            
+            # If normalization didn't help, use moderate distance
+            val = 0.6  # Moderate distance for unknown vs known phoneme
+            logger.debug("Phoneme %s unknown to Panphon (vs %s), using moderate distance: %f", unknown_phoneme, known_phoneme, val)
+            _distance_cache[key] = val
+            return val
+        
+        # Both phonemes have vectors - use standard Panphon analysis
+        # Convert feature vectors to numeric, handling '+', '-', '0' 
+        def convert_features(feature_list):
+            numeric_vectors = []
+            for vector in feature_list:
+                numeric_vector = []
+                for feature in vector:
+                    if feature == '+':
+                        numeric_vector.append(1.0)
+                    elif feature == '-':
+                        numeric_vector.append(-1.0)
+                    elif feature == '0':
+                        numeric_vector.append(0.0)
+                    else:
+                        # Handle unexpected feature values
+                        try:
+                            numeric_vector.append(float(feature))
+                        except ValueError:
+                            numeric_vector.append(0.0)  # Default to neutral
+                numeric_vectors.append(numeric_vector)
+            return numeric_vectors
+        
+        v1_numeric = convert_features(v1_list)
+        v2_numeric = convert_features(v2_list)
+        
+        v1 = np.mean(np.array(v1_numeric, dtype=float), axis=0)
+        v2 = np.mean(np.array(v2_numeric, dtype=float), axis=0)
+        
         denom = (np.linalg.norm(v1) * np.linalg.norm(v2))
         if denom == 0:
             _distance_cache[key] = 1.0
             return 1.0
+            
         cos_sim = float(np.dot(v1, v2) / denom)
         val = float(1.0 - (cos_sim + 1.0) / 2.0)
         _distance_cache[key] = val
         return val
+        
     except Exception as exc:
+        # True Panphon errors (not just empty vectors)
+        logger.warning("Panphon error for phonemes (%s,%s): %s", p1, p2, str(exc))
+        
         # Fallback to simple character comparison for panphon failures
         if p1 == p2:
             fallback_val = 0.0
@@ -93,9 +152,30 @@ def ipa_feature_distance(p1: str, p2: str) -> float:
         else:
             fallback_val = 1.0
         
-        logger.debug("Panphon fallback for (%s,%s): %f", p1, p2, fallback_val)  # Shortened debug message
+        logger.debug("Using fallback distance for (%s,%s): %f", p1, p2, fallback_val)
         _distance_cache[key] = fallback_val
         return fallback_val
+
+
+def normalize_unknown_phoneme(phoneme: str) -> str:
+    """Normalize unknown phonemes to standard IPA that Panphon recognizes."""
+    # Common Wav2Vec2 -> Standard IPA mappings
+    normalizations = {
+        'ɚ': 'ər',    # R-colored schwa -> schwa + r
+        'ɝ': 'ər',    # R-colored schwa (stressed) -> schwa + r  
+        'ɑr': 'ɑ',    # Remove r-coloring, use base vowel
+        'ɛr': 'ɛ',    # Remove r-coloring, use base vowel
+        'ɪr': 'ɪ',    # Remove r-coloring, use base vowel  
+        'ɔr': 'ɔ',    # Remove r-coloring, use base vowel
+        'ʊr': 'ʊ',    # Remove r-coloring, use base vowel
+        'ɑː': 'ɑ',    # Remove length marker
+        'iː': 'i',    # Remove length marker
+        'uː': 'u',    # Remove length marker
+        'ɔː': 'ɔ',    # Remove length marker
+        'eː': 'e',    # Remove length marker
+    }
+    
+    return normalizations.get(phoneme, phoneme)
 
 
 def align_and_score(expected_ipa: List[str], recognized_ipa: List[str]) -> tuple[List[float], List[tuple[Optional[str], Optional[str], Optional[float]]]]:

@@ -7,8 +7,8 @@ from .routes_scripted import router as scripted_router
 from .routes_unscripted import router as unscripted_router
 
 
-FRONTEND_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()  # Changed from DEBUG to reduce log noise
+FRONTEND_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001").split(",")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()  # Back to INFO now that Panphon is fixed
 
 
 app = FastAPI()

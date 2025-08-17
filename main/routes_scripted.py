@@ -57,21 +57,21 @@ def phonemize_words(text: str) -> List[List[str]]:
 
 @router.post("/scripted", response_model=AnalyzeResponse)
 async def scripted(
-    file: UploadFile = File(...),
     expected_text: str = Form(...),
     browser_transcript: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
 ):
-    if file.content_type is None or not (
-        file.content_type.startswith("audio/") or file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".webm", ".ogg"))
-    ):
-        raise HTTPException(status_code=400, detail="Please upload an audio file.")
-
     # Fast path: avoid decoding the audio when we only evaluate text vs text
-    # If audio timing is needed later, re-enable decoding.
-
+    # Audio file is optional for text-based pronunciation analysis
+    
     said_text = (browser_transcript or "").strip()
     if not said_text:
         raise HTTPException(status_code=400, detail="Missing browser_transcript for scripted mode.")
+    
+    # Validate audio file if provided (for backward compatibility)
+    if file and file.content_type is not None:
+        if not (file.content_type.startswith("audio/") or file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".webm", ".ogg"))):
+            raise HTTPException(status_code=400, detail="Invalid audio file format.")
 
     # Phonemize both
     exp_words = tokenize_words(expected_text)
