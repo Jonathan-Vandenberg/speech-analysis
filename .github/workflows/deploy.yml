@@ -1,0 +1,78 @@
+name: 🚀 Deploy to DigitalOcean
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'main/**'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - '.github/workflows/deploy.yml'
+
+env:
+  REGISTRY: registry.digitalocean.com
+  IMAGE_NAME: jon-school/api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: SERVER
+    
+    steps:
+    - name: 🔄 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐳 Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+    
+    - name: 🔐 Log in to DigitalOcean Container Registry
+      run: doctl registry login --expiry-seconds 1200
+    
+    - name: 🏗️ Build container image
+      run: |
+        docker build -t $REGISTRY/$IMAGE_NAME:${{ github.sha }} .
+        docker build -t $REGISTRY/$IMAGE_NAME:latest .
+    
+    - name: 📤 Push image to DigitalOcean Container Registry
+      run: |
+        docker push $REGISTRY/$IMAGE_NAME:${{ github.sha }}
+        docker push $REGISTRY/$IMAGE_NAME:latest
+    
+    - name: 🚀 Deploy to DigitalOcean Droplet
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.DROPLET_HOST }}
+        username: ${{ secrets.DROPLET_USER }}
+        key: ${{ secrets.DIGITAL_OCEAN_SSH_KEY }}
+        script: |
+          # Login to registry
+          doctl registry login --expiry-seconds 1200
+          
+          # Pull latest image
+          docker pull registry.digitalocean.com/jon-school/api:latest
+          
+          # Stop existing container
+          docker stop speech-analyser-api || true
+          docker rm speech-analyser-api || true
+          
+          # Run new container
+          docker run -d \
+            --name speech-analyser-api \
+            --restart unless-stopped \
+            -p 8000:8000 \
+            -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            -e SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
+            -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            -e LOG_LEVEL="INFO" \
+            registry.digitalocean.com/jon-school/api:latest
+          
+          # Clean up old images
+          docker image prune -f
+    
+    - name: ✅ Deployment Status
+      run: |
+        echo "🎉 Deployment completed successfully!"
+        echo "🌐 API available at: https://api.speechanalyser.com"
+        echo "📚 Documentation: https://jonathan-vandenberg.github.io/speech-analysis"

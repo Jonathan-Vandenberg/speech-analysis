@@ -64,8 +64,8 @@ All analysis endpoints return comprehensive results including:
     redoc_url="/redoc",
     contact={
         "name": "Speech Analysis API Support",
-        "url": "https://github.com/your-username/audio-analysis",
-        "email": "support@yourapi.com"
+        "url": "https://github.com/Jonathan-Vandenberg/speech-analysis",
+        "email": "support@speechanalyser.com"
     },
     license_info={
         "name": "MIT License",
@@ -73,12 +73,12 @@ All analysis endpoints return comprehensive results including:
     },
     servers=[
         {
-            "url": "http://localhost:8000",
-            "description": "Development server"
+            "url": "https://api.speechanalyser.com",
+            "description": "Production server"
         },
         {
-            "url": "https://api.yourapi.com",
-            "description": "Production server"
+            "url": "http://localhost:8000",
+            "description": "Development server"
         }
     ]
 )
