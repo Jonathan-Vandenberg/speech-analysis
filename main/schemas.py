@@ -103,3 +103,70 @@ class AnalyzeResponse(BaseModel):
     ielts_score: Optional[IELTSScore] = None
 
 
+# Admin API Models
+class APIKeyInfo(BaseModel):
+    """API Key information for admin interface"""
+    id: str
+    description: str
+    is_active: bool
+    usage_count: int
+    minute_usage: int
+    daily_usage: int
+    monthly_usage: int
+    minute_limit: int
+    daily_limit: int
+    monthly_limit: int
+    last_used_at: Optional[str] = None
+    created_at: str
+
+
+class APIKeyCreateRequest(BaseModel):
+    """Request model for creating new API keys"""
+    description: str
+    minute_limit: int = 10
+    daily_limit: int = 1000
+    monthly_limit: int = 10000
+
+
+class APIKeyCreateResponse(BaseModel):
+    """Response model for API key creation"""
+    api_key: str
+    key_id: str
+    description: str
+    minute_limit: int
+    daily_limit: int
+    monthly_limit: int
+
+
+class APIKeysListResponse(BaseModel):
+    """Response model for listing API keys"""
+    api_keys: List[APIKeyInfo]
+
+
+class APIKeyUpdateRequest(BaseModel):
+    """Request model for updating API keys"""
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    minute_limit: Optional[int] = None
+    daily_limit: Optional[int] = None
+    monthly_limit: Optional[int] = None
+
+
+class UsageAnalyticsResponse(BaseModel):
+    """Response model for usage analytics"""
+    api_keys: List[Dict[str, Any]]
+    recent_logs: List[Dict[str, Any]]
+
+
+class HealthCheckResponse(BaseModel):
+    """Health check response"""
+    status: str
+    database: str
+    version: str
+
+
+class ErrorResponse(BaseModel):
+    """Standard error response"""
+    detail: str
+
+

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Analysis API Documentation</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
+    <link rel="icon" type="image/png" href="https://fastapi.tiangolo.com/img/favicon.png" />
+    <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+
+        body {
+            margin: 0;
+            background: #fafafa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Open Sans", "Helvetica Neue", sans-serif;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 300;
+        }
+
+        .header p {
+            margin: 0.5rem 0 0 0;
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        .info-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .info-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+        }
+
+        .info-card h3 {
+            margin: 0 0 1rem 0;
+            color: #333;
+            font-size: 1.3rem;
+        }
+
+        .info-card p {
+            margin: 0;
+            color: #666;
+            line-height: 1.6;
+        }
+
+        .quick-start {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .quick-start h3 {
+            margin: 0 0 1rem 0;
+            color: #333;
+        }
+
+        .code-block {
+            background: #f8f8f8;
+            border: 1px solid #e1e8ed;
+            border-radius: 4px;
+            padding: 1rem;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            margin: 1rem 0;
+        }
+
+        .swagger-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        #swagger-ui {
+            max-width: none;
+        }
+
+        /* Custom Swagger UI styling */
+        .swagger-ui .topbar {
+            display: none;
+        }
+
+        .swagger-ui .info .title {
+            color: #667eea;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .header p {
+                font-size: 1rem;
+            }
+            
+            .info-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>🎯 Speech Analysis API</h1>
+            <p>Advanced pronunciation and speech analysis for language learning applications</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="info-cards">
+            <div class="info-card">
+                <h3>🗣️ Pronunciation Analysis</h3>
+                <p>Get detailed phoneme-level scoring with IPA transcription. Perfect for language learning apps and pronunciation training.</p>
+            </div>
+            <div class="info-card">
+                <h3>📝 Scripted Analysis</h3>
+                <p>Compare recorded speech against expected text with comprehensive scoring and feedback.</p>
+            </div>
+            <div class="info-card">
+                <h3>🎤 Unscripted Analysis</h3>
+                <p>Open-ended speech evaluation with IELTS scoring, grammar analysis, and fluency metrics.</p>
+            </div>
+            <div class="info-card">
+                <h3>🔐 Secure & Scalable</h3>
+                <p>API key authentication with configurable rate limits and comprehensive usage analytics.</p>
+            </div>
+        </div>
+
+        <div class="quick-start">
+            <h3>🚀 Quick Start</h3>
+            <p>Get started with the Speech Analysis API in minutes:</p>
+            
+            <h4>1. Get an API Key</h4>
+            <div class="code-block">POST /api/admin/keys
+Content-Type: application/x-www-form-urlencoded
+
+description=My%20App&minute_limit=60&daily_limit=1000</div>
+
+            <h4>2. Analyze Speech</h4>
+            <div class="code-block">curl -X POST "https://api.example.com/analyze/pronunciation" \
+  -H "Authorization: Bearer sk-your-api-key-here" \
+  -F "expected_text=Hello world" \
+  -F "file=@audio.wav"</div>
+
+            <h4>3. Get Results</h4>
+            <div class="code-block">{
+  "pronunciation": {
+    "overall_score": 85.5,
+    "words": [
+      {
+        "word_text": "hello",
+        "word_score": 88.2,
+        "phonemes": [
+          {"ipa_label": "h", "phoneme_score": 92.1},
+          {"ipa_label": "ɛ", "phoneme_score": 84.3}
+        ]
+      }
+    ]
+  },
+  "predicted_text": "Hello world",
+  "metrics": { ... }
+}</div>
+        </div>
+
+        <div class="swagger-container">
+            <div id="swagger-ui"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            const ui = SwaggerUIBundle({
+                url: './openapi.json',
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                tryItOutEnabled: true,
+                requestInterceptor: function(req) {
+                    // Add default server if not set
+                    if (!req.url.includes('://')) {
+                        req.url = 'https://api.example.com' + req.url;
+                    }
+                    return req;
+                },
+                onComplete: function() {
+                    // Add custom styling after Swagger UI loads
+                    console.log('📚 Speech Analysis API Documentation loaded successfully!');
+                }
+            });
+        };
+    </script>
+</body>
+</html>

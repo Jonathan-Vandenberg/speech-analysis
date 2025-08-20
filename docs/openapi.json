@@ -1,0 +1,1434 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Speech Analysis API",
+    "description": "\n# 🎯 Speech Analysis API\n\nA comprehensive speech and pronunciation analysis API designed for language learning applications.\n\n## 🚀 Features\n\n### Core Analysis Capabilities\n- **🗣️ Pronunciation Analysis**: Detailed phoneme-level scoring with IPA transcription\n- **📝 Scripted Speech Analysis**: Compare recorded speech against expected text\n- **🎤 Unscripted Speech Analysis**: Open-ended speech evaluation with IELTS scoring\n- **🧠 AI-Powered Feedback**: Grammar correction, fluency analysis, and constructive feedback\n\n### Management & Analytics\n- **🔐 API Key Management**: Secure authentication with configurable rate limits\n- **📊 Usage Analytics**: Comprehensive tracking of API usage and performance\n- **⚡ Rate Limiting**: Per-minute, daily, and monthly usage controls\n- **🏥 Health Monitoring**: Real-time status checks and database connectivity\n\n## 🔐 Authentication\n\nAll analysis endpoints require API key authentication:\n\n```bash\ncurl -X POST \"https://api.example.com/analyze/pronunciation\" \\\n  -H \"Authorization: Bearer sk-your-api-key-here\" \\\n  -F \"expected_text=Hello world\" \\\n  -F \"file=@audio.wav\"\n```\n\n## 📈 Rate Limits\n\nAPI keys have configurable limits:\n- **Per-minute**: Default 10 requests/minute (configurable 1-1000)\n- **Daily**: Default 1,000 requests/day (configurable 1-100,000)\n- **Monthly**: Default 10,000 requests/month (configurable 1-1,000,000)\n\n## 📋 Supported Audio Formats\n\n- **WAV** (recommended)\n- **MP3**\n- **WEBM**\n- **OGG**\n- **FLAC**\n\nAudio is automatically converted to 16kHz mono for processing.\n\n## 🎯 Use Cases\n\n### Language Learning Apps\n- Pronunciation training with phoneme-level feedback\n- Speaking practice with real-time scoring\n- IELTS/TOEFL preparation with band scoring\n\n### Educational Platforms\n- Automated speech assessment\n- Progress tracking and analytics\n- Adaptive learning based on performance\n\n### Voice Training Applications\n- Professional voice coaching\n- Accent reduction training\n- Public speaking improvement\n\n## 📞 Support\n\n- **Documentation**: [GitHub Pages](https://your-username.github.io/audio-analysis)\n- **Issues**: [GitHub Issues](https://github.com/your-username/audio-analysis/issues)\n- **Email**: support@yourapi.com\n\n---\n\n*Built with FastAPI, advanced phonetic analysis, and AI-powered speech processing.*\n",
+    "contact": {
+      "name": "Speech Analysis API Support",
+      "url": "https://github.com/your-username/audio-analysis",
+      "email": "support@yourapi.com"
+    },
+    "license": {
+      "name": "MIT License",
+      "url": "https://opensource.org/licenses/MIT"
+    },
+    "version": "1.0.0",
+    "x-logo": {
+      "url": "https://fastapi.tiangolo.com/img/logo-margin/logo-teal.png",
+      "altText": "Speech Analysis API"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.yourapi.com",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/analyze/scripted": {
+      "post": {
+        "summary": "Scripted",
+        "operationId": "scripted_analyze_scripted_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_scripted_analyze_scripted_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/analyze/pronunciation": {
+      "post": {
+        "summary": "Pronunciation",
+        "description": "Pronunciation analysis using audio-to-phoneme recognition (no text transcription needed).",
+        "operationId": "pronunciation_analyze_pronunciation_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_pronunciation_analyze_pronunciation_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/analyze/unscripted": {
+      "post": {
+        "summary": "Unscripted",
+        "operationId": "unscripted_analyze_unscripted_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_unscripted_analyze_unscripted_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health Check",
+        "description": "Check the health status of the API and database connection",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "description": "API is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "database": "connected",
+                  "version": "1.0.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/keys": {
+      "get": {
+        "tags": [
+          "Admin - API Keys"
+        ],
+        "summary": "List API Keys",
+        "description": "Retrieve all API keys with usage statistics and limits",
+        "operationId": "get_api_keys_api_admin_keys_get",
+        "responses": {
+          "200": {
+            "description": "List of API keys retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeysListResponse"
+                },
+                "example": {
+                  "api_keys": [
+                    {
+                      "id": "123e4567-e89b-12d3-a456-426614174000",
+                      "description": "Production API Key",
+                      "is_active": true,
+                      "usage_count": 150,
+                      "minute_usage": 2,
+                      "daily_usage": 45,
+                      "monthly_usage": 150,
+                      "minute_limit": 60,
+                      "daily_limit": 1000,
+                      "monthly_limit": 10000,
+                      "last_used_at": "2024-01-15T10:30:00Z",
+                      "created_at": "2024-01-01T09:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin - API Keys"
+        ],
+        "summary": "Create API Key",
+        "description": "Create a new API key with custom rate limits.\n    \n    **⚠️ Important**: The API key is only shown once for security reasons. \n    Make sure to copy and store it securely.",
+        "operationId": "create_api_key_api_admin_keys_post",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_api_key_api_admin_keys_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "API key created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeyCreateResponse"
+                },
+                "example": {
+                  "api_key": "sk-1234567890abcdef1234567890abcdef1234567890abcdef",
+                  "key_id": "123e4567-e89b-12d3-a456-426614174000",
+                  "description": "Production API Key",
+                  "minute_limit": 60,
+                  "daily_limit": 1000,
+                  "monthly_limit": 10000
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/keys/{key_id}": {
+      "put": {
+        "tags": [
+          "Admin - API Keys"
+        ],
+        "summary": "Update API Key",
+        "description": "Update API key settings such as rate limits, description, or active status",
+        "operationId": "update_api_key_api_admin_keys__key_id__put",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/APIKeyUpdateRequest"
+                  }
+                ],
+                "description": "Fields to update",
+                "title": "Updates"
+              },
+              "example": {
+                "description": "Updated Production Key",
+                "is_active": true,
+                "minute_limit": 120,
+                "daily_limit": 2000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API key updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "success": true
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "API key not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to update API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/analytics": {
+      "get": {
+        "tags": [
+          "Admin - Analytics"
+        ],
+        "summary": "Usage Analytics",
+        "description": "Get comprehensive usage analytics and statistics for all API keys",
+        "operationId": "get_usage_analytics_api_admin_analytics_get",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Analytics data retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageAnalyticsResponse"
+                },
+                "example": {
+                  "api_keys": [
+                    {
+                      "id": "123e4567-e89b-12d3-a456-426614174000",
+                      "total_requests": 1500,
+                      "last_request_at": "2024-01-15T10:30:00Z",
+                      "first_request_at": "2024-01-01T09:00:00Z"
+                    }
+                  ],
+                  "recent_logs": [
+                    {
+                      "endpoint": "/analyze/pronunciation",
+                      "deep_analysis": true,
+                      "use_audio": true,
+                      "created_at": "2024-01-15T10:30:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Database unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "APIKeyCreateResponse": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "title": "Api Key"
+          },
+          "key_id": {
+            "type": "string",
+            "title": "Key Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "minute_limit": {
+            "type": "integer",
+            "title": "Minute Limit"
+          },
+          "daily_limit": {
+            "type": "integer",
+            "title": "Daily Limit"
+          },
+          "monthly_limit": {
+            "type": "integer",
+            "title": "Monthly Limit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_key",
+          "key_id",
+          "description",
+          "minute_limit",
+          "daily_limit",
+          "monthly_limit"
+        ],
+        "title": "APIKeyCreateResponse",
+        "description": "Response model for API key creation"
+      },
+      "APIKeyInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "usage_count": {
+            "type": "integer",
+            "title": "Usage Count"
+          },
+          "minute_usage": {
+            "type": "integer",
+            "title": "Minute Usage"
+          },
+          "daily_usage": {
+            "type": "integer",
+            "title": "Daily Usage"
+          },
+          "monthly_usage": {
+            "type": "integer",
+            "title": "Monthly Usage"
+          },
+          "minute_limit": {
+            "type": "integer",
+            "title": "Minute Limit"
+          },
+          "daily_limit": {
+            "type": "integer",
+            "title": "Daily Limit"
+          },
+          "monthly_limit": {
+            "type": "integer",
+            "title": "Monthly Limit"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "description",
+          "is_active",
+          "usage_count",
+          "minute_usage",
+          "daily_usage",
+          "monthly_usage",
+          "minute_limit",
+          "daily_limit",
+          "monthly_limit",
+          "created_at"
+        ],
+        "title": "APIKeyInfo",
+        "description": "API Key information for admin interface"
+      },
+      "APIKeyUpdateRequest": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "minute_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minute Limit"
+          },
+          "daily_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Limit"
+          },
+          "monthly_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Limit"
+          }
+        },
+        "type": "object",
+        "title": "APIKeyUpdateRequest",
+        "description": "Request model for updating API keys"
+      },
+      "APIKeysListResponse": {
+        "properties": {
+          "api_keys": {
+            "items": {
+              "$ref": "#/components/schemas/APIKeyInfo"
+            },
+            "type": "array",
+            "title": "Api Keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_keys"
+        ],
+        "title": "APIKeysListResponse",
+        "description": "Response model for listing API keys"
+      },
+      "AnalyzeResponse": {
+        "properties": {
+          "pronunciation": {
+            "$ref": "#/components/schemas/PronunciationResult"
+          },
+          "predicted_text": {
+            "type": "string",
+            "title": "Predicted Text"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpeechMetrics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "grammar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GrammarCorrection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "relevance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RelevanceAnalysis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ielts_score": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IELTSScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "pronunciation",
+          "predicted_text"
+        ],
+        "title": "AnalyzeResponse"
+      },
+      "Body_create_api_key_api_admin_keys_post": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Description of the API key purpose"
+          },
+          "minute_limit": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Minute Limit",
+            "description": "Maximum requests per minute",
+            "default": 10
+          },
+          "daily_limit": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Daily Limit",
+            "description": "Maximum requests per day",
+            "default": 1000
+          },
+          "monthly_limit": {
+            "type": "integer",
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Monthly Limit",
+            "description": "Maximum requests per month",
+            "default": 10000
+          }
+        },
+        "type": "object",
+        "required": [
+          "description"
+        ],
+        "title": "Body_create_api_key_api_admin_keys_post"
+      },
+      "Body_pronunciation_analyze_pronunciation_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          },
+          "expected_text": {
+            "type": "string",
+            "title": "Expected Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "expected_text"
+        ],
+        "title": "Body_pronunciation_analyze_pronunciation_post"
+      },
+      "Body_scripted_analyze_scripted_post": {
+        "properties": {
+          "expected_text": {
+            "type": "string",
+            "title": "Expected Text"
+          },
+          "browser_transcript": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser Transcript"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "binary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "expected_text"
+        ],
+        "title": "Body_scripted_analyze_scripted_post"
+      },
+      "Body_unscripted_analyze_unscripted_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          },
+          "browser_transcript": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser Transcript"
+          },
+          "use_audio": {
+            "type": "string",
+            "title": "Use Audio",
+            "default": "false"
+          },
+          "deep_analysis": {
+            "type": "string",
+            "title": "Deep Analysis",
+            "default": "false"
+          },
+          "question_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Text"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_unscripted_analyze_unscripted_post"
+      },
+      "DiscourseMarker": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "start_index": {
+            "type": "integer",
+            "title": "Start Index"
+          },
+          "end_index": {
+            "type": "integer",
+            "title": "End Index"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "start_index",
+          "end_index",
+          "description"
+        ],
+        "title": "DiscourseMarker"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "description": "Standard error response"
+      },
+      "FillerWordDetail": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "start_index": {
+            "type": "integer",
+            "title": "Start Index"
+          },
+          "end_index": {
+            "type": "integer",
+            "title": "End Index"
+          },
+          "phonemes": {
+            "type": "string",
+            "title": "Phonemes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "start_index",
+          "end_index",
+          "phonemes"
+        ],
+        "title": "FillerWordDetail"
+      },
+      "GrammarCorrection": {
+        "properties": {
+          "original_text": {
+            "type": "string",
+            "title": "Original Text"
+          },
+          "corrected_text": {
+            "type": "string",
+            "title": "Corrected Text"
+          },
+          "differences": {
+            "items": {
+              "$ref": "#/components/schemas/GrammarDifference"
+            },
+            "type": "array",
+            "title": "Differences"
+          },
+          "taggedText": {
+            "type": "string",
+            "title": "Taggedtext"
+          },
+          "lexical_analysis": {
+            "type": "string",
+            "title": "Lexical Analysis"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Strengths"
+          },
+          "improvements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Improvements"
+          },
+          "lexical_band_score": {
+            "type": "number",
+            "title": "Lexical Band Score"
+          },
+          "modelAnswers": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Modelanswers"
+          },
+          "grammar_score": {
+            "type": "number",
+            "title": "Grammar Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "original_text",
+          "corrected_text",
+          "differences",
+          "taggedText",
+          "lexical_analysis",
+          "strengths",
+          "improvements",
+          "lexical_band_score",
+          "modelAnswers",
+          "grammar_score"
+        ],
+        "title": "GrammarCorrection"
+      },
+      "GrammarDifference": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "original": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original"
+          },
+          "corrected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corrected"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "original",
+          "corrected",
+          "position"
+        ],
+        "title": "GrammarDifference"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthCheckResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "database": {
+            "type": "string",
+            "title": "Database"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "database",
+          "version"
+        ],
+        "title": "HealthCheckResponse",
+        "description": "Health check response"
+      },
+      "IELTSScore": {
+        "properties": {
+          "overall_band": {
+            "type": "number",
+            "title": "Overall Band"
+          },
+          "fluency_coherence": {
+            "type": "number",
+            "title": "Fluency Coherence"
+          },
+          "lexical_resource": {
+            "type": "number",
+            "title": "Lexical Resource"
+          },
+          "grammatical_range": {
+            "type": "number",
+            "title": "Grammatical Range"
+          },
+          "pronunciation": {
+            "type": "number",
+            "title": "Pronunciation"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "overall_band",
+          "fluency_coherence",
+          "lexical_resource",
+          "grammatical_range",
+          "pronunciation",
+          "explanation"
+        ],
+        "title": "IELTSScore"
+      },
+      "PauseDetail": {
+        "properties": {
+          "start_index": {
+            "type": "integer",
+            "title": "Start Index"
+          },
+          "end_index": {
+            "type": "integer",
+            "title": "End Index"
+          },
+          "duration": {
+            "type": "number",
+            "title": "Duration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_index",
+          "end_index",
+          "duration"
+        ],
+        "title": "PauseDetail"
+      },
+      "PhonemeScore": {
+        "properties": {
+          "ipa_label": {
+            "type": "string",
+            "title": "Ipa Label"
+          },
+          "phoneme_score": {
+            "type": "number",
+            "title": "Phoneme Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ipa_label",
+          "phoneme_score"
+        ],
+        "title": "PhonemeScore"
+      },
+      "PronunciationResult": {
+        "properties": {
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/WordPronunciation"
+            },
+            "type": "array",
+            "title": "Words"
+          },
+          "overall_score": {
+            "type": "number",
+            "title": "Overall Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "words",
+          "overall_score"
+        ],
+        "title": "PronunciationResult"
+      },
+      "RelevanceAnalysis": {
+        "properties": {
+          "relevance_score": {
+            "type": "number",
+            "title": "Relevance Score"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "key_points_covered": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Key Points Covered"
+          },
+          "missing_points": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Points"
+          }
+        },
+        "type": "object",
+        "required": [
+          "relevance_score",
+          "explanation",
+          "key_points_covered",
+          "missing_points"
+        ],
+        "title": "RelevanceAnalysis"
+      },
+      "Repetition": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "start_index": {
+            "type": "integer",
+            "title": "Start Index"
+          },
+          "end_index": {
+            "type": "integer",
+            "title": "End Index"
+          },
+          "repeat_count": {
+            "type": "integer",
+            "title": "Repeat Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "start_index",
+          "end_index",
+          "repeat_count"
+        ],
+        "title": "Repetition"
+      },
+      "SpeechMetrics": {
+        "properties": {
+          "speech_rate": {
+            "type": "number",
+            "title": "Speech Rate"
+          },
+          "speech_rate_over_time": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Speech Rate Over Time"
+          },
+          "pauses": {
+            "type": "integer",
+            "title": "Pauses"
+          },
+          "filler_words": {
+            "type": "integer",
+            "title": "Filler Words"
+          },
+          "discourse_markers": {
+            "items": {
+              "$ref": "#/components/schemas/DiscourseMarker"
+            },
+            "type": "array",
+            "title": "Discourse Markers"
+          },
+          "filler_words_per_min": {
+            "type": "number",
+            "title": "Filler Words Per Min"
+          },
+          "pause_details": {
+            "items": {
+              "$ref": "#/components/schemas/PauseDetail"
+            },
+            "type": "array",
+            "title": "Pause Details"
+          },
+          "repetitions": {
+            "items": {
+              "$ref": "#/components/schemas/Repetition"
+            },
+            "type": "array",
+            "title": "Repetitions"
+          },
+          "filler_words_details": {
+            "items": {
+              "$ref": "#/components/schemas/FillerWordDetail"
+            },
+            "type": "array",
+            "title": "Filler Words Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "speech_rate",
+          "speech_rate_over_time",
+          "pauses",
+          "filler_words",
+          "discourse_markers",
+          "filler_words_per_min",
+          "pause_details",
+          "repetitions",
+          "filler_words_details"
+        ],
+        "title": "SpeechMetrics"
+      },
+      "UsageAnalyticsResponse": {
+        "properties": {
+          "api_keys": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Api Keys"
+          },
+          "recent_logs": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Recent Logs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_keys",
+          "recent_logs"
+        ],
+        "title": "UsageAnalyticsResponse",
+        "description": "Response model for usage analytics"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WordPronunciation": {
+        "properties": {
+          "word_text": {
+            "type": "string",
+            "title": "Word Text"
+          },
+          "phonemes": {
+            "items": {
+              "$ref": "#/components/schemas/PhonemeScore"
+            },
+            "type": "array",
+            "title": "Phonemes"
+          },
+          "word_score": {
+            "type": "number",
+            "title": "Word Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "word_text",
+          "phonemes",
+          "word_score"
+        ],
+        "title": "WordPronunciation"
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "API Key",
+        "description": "API key authentication using Bearer token. Format: `Bearer sk-your-api-key-here`"
+      }
+    }
+  }
+}

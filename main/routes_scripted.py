@@ -6,13 +6,14 @@ import soundfile as sf
 import io
 import tempfile
 import subprocess
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Depends, Request
 
 logger = logging.getLogger("speech_analyzer")
 
 from .schemas import AnalyzeResponse, PronunciationResult, WordPronunciation, PhonemeScore
 from .utils_text import tokenize_words, normalize_ipa, phonemize_words_en, phonemes_from_audio
 from .utils_align import align_and_score
+from .middleware import api_key_bearer, APIKeyInfo, request_tracker, generate_request_id
 
 router = APIRouter()
 
@@ -57,10 +58,16 @@ def phonemize_words(text: str) -> List[List[str]]:
 
 @router.post("/scripted", response_model=AnalyzeResponse)
 async def scripted(
+    request: Request,
     expected_text: str = Form(...),
     browser_transcript: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
+    api_key_info: Optional[APIKeyInfo] = Depends(api_key_bearer),
 ):
+    # Start request tracking
+    request_id = generate_request_id()
+    request_tracker.start_request(request_id, api_key_info, "scripted", request)
+    
     # Fast path: avoid decoding the audio when we only evaluate text vs text
     # Audio file is optional for text-based pronunciation analysis
     
@@ -149,15 +156,33 @@ async def scripted(
                 out_words.append(WordPronunciation(word_text=w_text, phonemes=phonemes, word_score=0.0))
 
     overall = float(np.mean([w.word_score for w in out_words])) if out_words else 0.0
-    return AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=browser_transcript or "")
+    response = AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=browser_transcript or "")
+    
+    # Finish request tracking
+    audio_data = await file.read() if file else None
+    form_data = {
+        "expected_text": expected_text,
+        "browser_transcript": browser_transcript,
+        "deep_analysis": "false",  # scripted endpoint doesn't have deep analysis
+        "use_audio": "false"  # scripted endpoint uses browser transcript
+    }
+    await request_tracker.finish_request(request_id, response.model_dump(), form_data, audio_data)
+    
+    return response
 
 
 @router.post("/pronunciation", response_model=AnalyzeResponse)
 async def pronunciation(
+    request: Request,
     file: UploadFile = File(...),
     expected_text: str = Form(...),
+    api_key_info: Optional[APIKeyInfo] = Depends(api_key_bearer),
 ):
     """Pronunciation analysis using audio-to-phoneme recognition (no text transcription needed)."""
+    # Start request tracking
+    request_id = generate_request_id()
+    request_tracker.start_request(request_id, api_key_info, "pronunciation", request)
+    
     if file.content_type is None or not (
         file.content_type.startswith("audio/") or file.filename.lower().endswith((".wav", ".mp3", ".m4a", ".webm", ".ogg"))
     ):
@@ -261,7 +286,18 @@ async def pronunciation(
         else:
             recognized_text = " | ".join(predicted_words)
         
-        return AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=recognized_text)
+        response = AnalyzeResponse(pronunciation=PronunciationResult(words=out_words, overall_score=overall), predicted_text=recognized_text)
+        
+        # Finish request tracking
+        audio_data = await file.read()
+        form_data = {
+            "expected_text": expected_text,
+            "deep_analysis": "false",  # pronunciation endpoint doesn't have deep analysis
+            "use_audio": "true"  # pronunciation endpoint uses audio
+        }
+        await request_tracker.finish_request(request_id, response.model_dump(), form_data, audio_data)
+        
+        return response
         
     except HTTPException:
         raise

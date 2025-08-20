@@ -1,0 +1,62 @@
+# GitHub Pages configuration for Speech Analysis API Documentation
+
+title: "Speech Analysis API Documentation"
+description: "Advanced pronunciation and speech analysis API with comprehensive documentation"
+url: "https://your-username.github.io"
+baseurl: "/audio-analysis"
+
+# Theme and plugins
+theme: minima
+plugins:
+  - jekyll-sitemap
+  - jekyll-seo-tag
+
+# SEO and metadata
+author:
+  name: "Your Name"
+  email: "your-email@example.com"
+
+social:
+  name: "Speech Analysis API"
+  links:
+    - "https://github.com/your-username/audio-analysis"
+
+# Exclude files from processing
+exclude:
+  - README.md
+  - openapi.json
+  - api-stats.json
+
+# Include custom files
+include:
+  - index.html
+
+# Collections and defaults
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"
+
+# Custom variables
+api:
+  version: "1.0.0"
+  base_url: "https://api.example.com"
+  
+# Analytics (optional)
+google_analytics: "G-XXXXXXXXXX"  # Replace with your GA tracking ID
+
+# Custom CSS/JS (optional)
+head_scripts: |
+  <script>
+    console.log('🎯 Speech Analysis API Documentation loaded');
+  </script>
+
+# Navigation (optional)
+nav_links:
+  - title: "API Documentation"
+    url: "/"
+  - title: "GitHub Repository"
+    url: "https://github.com/your-username/audio-analysis"
+  - title: "Admin Interface"
+    url: "https://admin.example.com"

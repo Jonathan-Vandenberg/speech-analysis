@@ -18,7 +18,7 @@ import io
 import tempfile
 import subprocess
 import librosa
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Depends, Request
 
 
 def ensure_minimum_score(score: float) -> float:
@@ -35,6 +35,7 @@ from .schemas import (
 )
 from .utils_text import tokenize_words, normalize_ipa, normalize_ipa_preserve_diphthongs, phonemize_words_en, phonemes_from_audio
 from .utils_align import align_and_score, random_low_score
+from .middleware import api_key_bearer, APIKeyInfo, request_tracker, generate_request_id, track_ai_interaction
 
 router = APIRouter()
 logger = logging.getLogger("speech_analyzer")
@@ -972,6 +973,9 @@ async def perform_comprehensive_ielts_analysis(text: str, question_text: Optiona
         """
 
         # Single OpenAI API call for all analysis
+        import time
+        start_time = time.time()
+        
         response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -986,6 +990,27 @@ async def perform_comprehensive_ielts_analysis(text: str, question_text: Optiona
             ],
             temperature=0.3,
             response_format={"type": "json_object"}
+        )
+        
+        # Track AI interaction
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        tokens_data = {
+            "input_tokens": response.usage.prompt_tokens if response.usage else 0,
+            "output_tokens": response.usage.completion_tokens if response.usage else 0,
+            "total_tokens": response.usage.total_tokens if response.usage else 0
+        }
+        
+        # Use a global function to avoid circular imports
+        from .middleware import track_ai_interaction
+        # Track this after we have api_key_info in scope
+        ai_interaction_task = track_ai_interaction(
+            None,  # Will be set later when we have access to api_key_info
+            "grammar_analysis",
+            "gpt-4o",
+            prompt,
+            response.choices[0].message.content or "",
+            processing_time_ms,
+            tokens_data
         )
 
         # Parse the AI response as JSON
@@ -1284,13 +1309,19 @@ def analyze_speech_fluency(text: str, audio: np.ndarray, sr: int = 16000) -> Spe
 
 @router.post("/unscripted", response_model=AnalyzeResponse)
 async def unscripted(
+    request: Request,
     file: UploadFile = File(...),
     browser_transcript: Optional[str] = Form(None),
     use_audio: str = Form("false"),
     deep_analysis: str = Form("false"),
     question_text: Optional[str] = Form(None),
     context: Optional[str] = Form(None),
+    api_key_info: Optional[APIKeyInfo] = Depends(api_key_bearer),
 ):
+    # Start request tracking
+    request_id = generate_request_id()
+    request_tracker.start_request(request_id, api_key_info, "unscripted", request)
+    
     # 🚀 CONCURRENCY CONTROL - Limit concurrent processing for better performance
     async with audio_processing_semaphore:
         # Processing request with concurrency control
@@ -1388,7 +1419,7 @@ async def unscripted(
                 grammar_analysis, relevance_analysis = await perform_comprehensive_ielts_analysis(predicted_text, question_text, context)
             ielts_score = calculate_ielts_score(grammar_analysis, pronunciation_analysis.pronunciation, pronunciation_analysis.metrics, relevance_analysis)
             
-            return AnalyzeResponse(
+            response = AnalyzeResponse(
                 pronunciation=pronunciation_analysis.pronunciation,
                 predicted_text=pronunciation_analysis.predicted_text,
                 metrics=pronunciation_analysis.metrics,
@@ -1396,7 +1427,33 @@ async def unscripted(
                 relevance=relevance_analysis,
                 ielts_score=ielts_score
             )
+            
+            # Finish request tracking
+            audio_data = await file.read()
+            form_data = {
+                "expected_text": "",  # unscripted doesn't have expected text
+                "browser_transcript": browser_transcript,
+                "deep_analysis": deep_analysis,
+                "use_audio": use_audio,
+                "question_text": question_text,
+                "context": context
+            }
+            await request_tracker.finish_request(request_id, response.model_dump(), form_data, audio_data)
+            
+            return response
         else:
+            # Finish request tracking
+            audio_data = await file.read()
+            form_data = {
+                "expected_text": "",  # unscripted doesn't have expected text
+                "browser_transcript": browser_transcript,
+                "deep_analysis": deep_analysis,
+                "use_audio": use_audio,
+                "question_text": question_text,
+                "context": context
+            }
+            await request_tracker.finish_request(request_id, pronunciation_analysis.model_dump(), form_data, audio_data)
+            
             return pronunciation_analysis
         
     else:
@@ -1486,7 +1543,7 @@ async def unscripted(
             grammar_analysis, relevance_analysis = await perform_comprehensive_ielts_analysis(predicted_text, question_text, context)
         ielts_score = calculate_ielts_score(grammar_analysis, pronunciation_result, None, relevance_analysis)
         
-        return AnalyzeResponse(
+        response = AnalyzeResponse(
             pronunciation=pronunciation_result,
             predicted_text=predicted_text,
             metrics=None,
@@ -1494,11 +1551,37 @@ async def unscripted(
             relevance=relevance_analysis,
             ielts_score=ielts_score
         )
+        
+        # Finish request tracking
+        form_data = {
+            "expected_text": "",  # unscripted doesn't have expected text
+            "browser_transcript": browser_transcript,
+            "deep_analysis": deep_analysis,
+            "use_audio": use_audio,
+            "question_text": question_text,
+            "context": context
+        }
+        await request_tracker.finish_request(request_id, response.model_dump(), form_data, None)
+        
+        return response
     else:
-        return AnalyzeResponse(
+        response = AnalyzeResponse(
             pronunciation=pronunciation_result, 
             predicted_text=predicted_text,
             metrics=None
         )
+        
+        # Finish request tracking
+        form_data = {
+            "expected_text": "",  # unscripted doesn't have expected text
+            "browser_transcript": browser_transcript,
+            "deep_analysis": deep_analysis,
+            "use_audio": use_audio,
+            "question_text": question_text,
+            "context": context
+        }
+        await request_tracker.finish_request(request_id, response.model_dump(), form_data, None)
+        
+        return response
 
 
