@@ -62,30 +62,38 @@ def create_project(pat: str, org_id: str, name: str, db_password: str, region: s
     return project_id, project_ref
 
 
-def get_api_keys(pat: str, project_ref: str) -> Tuple[str, str, str]:
-    """Return (supabase_url, anon_key, service_role_key)."""
+def get_api_keys(pat: str, project_ref: str, retries: int = 24, delay: int = 5) -> Tuple[str, str, str]:
+    """Return (supabase_url, anon_key, service_role_key). Polls until both keys are available."""
     headers = {"Authorization": f"Bearer {pat}"}
-    # Project details
+    # Project details (once)
     proj = requests.get(f"{SUPABASE_API}/v1/projects/{project_ref}", headers=headers, timeout=60)
     if proj.status_code != 200:
         raise RuntimeError(f"Get project failed: {proj.status_code} {proj.text}")
     p = proj.json()
     supabase_url = p.get("api_url") or p.get("api") or p.get("endpoint")
-    # Keys
-    keys = requests.get(f"{SUPABASE_API}/v1/projects/{project_ref}/api-keys", headers=headers, timeout=60)
-    if keys.status_code != 200:
-        raise RuntimeError(f"Get api-keys failed: {keys.status_code} {keys.text}")
-    kd = keys.json()
-    anon_key = None
-    service_role_key = None
-    for item in kd:
-        if item.get("name") == "anon" or item.get("role") == "anon":
-            anon_key = item.get("api_key") or item.get("key")
-        if item.get("name") == "service_role" or item.get("role") == "service_role":
-            service_role_key = item.get("api_key") or item.get("key")
-    if not (supabase_url and anon_key and service_role_key):
-        raise RuntimeError(f"Could not resolve keys: {json.dumps(kd)[:200]}")
-    return supabase_url, anon_key, service_role_key
+    if not supabase_url:
+        raise RuntimeError(f"No api url in project: {p}")
+
+    for attempt in range(1, retries + 1):
+        r = requests.get(f"{SUPABASE_API}/v1/projects/{project_ref}/api-keys", headers=headers, timeout=60)
+        if r.status_code != 200:
+            time.sleep(delay)
+            continue
+        kd = r.json()
+        anon_key = None
+        service_role_key = None
+        for item in kd:
+            name = item.get("name") or item.get("role") or item.get("type")
+            keyval = item.get("api_key") or item.get("key")
+            if name == "anon":
+                anon_key = keyval
+            if name in ("service_role", "service-role", "service" ):
+                service_role_key = keyval
+        if anon_key and service_role_key:
+            return supabase_url, anon_key, service_role_key
+        print(f"Waiting for keys (attempt {attempt}/{retries})...")
+        time.sleep(delay)
+    raise RuntimeError(f"Could not resolve keys after waiting: {json.dumps(kd)[:200]}")
 
 
 def store_creds(api_base: str, tenant_id: str, supabase_url: str, anon_key: str, service_role_key: str, region: str) -> None:
