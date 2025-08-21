@@ -231,6 +231,11 @@ class TenantCredsRequest(BaseModel):
     rotation_at: Optional[str] = None
 
 
+class TenantMigrationResponse(BaseModel):
+    success: bool
+    applied_statements: int
+
+
 class LinkKeyRequest(BaseModel):
     key_id: str
     tenant_id: Optional[str] = None

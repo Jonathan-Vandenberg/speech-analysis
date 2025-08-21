@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS tenant_supabase_creds (
     supabase_url TEXT NOT NULL,
     anon_key TEXT NOT NULL,
     service_role_key_encrypted TEXT NOT NULL,
+    db_password_encrypted TEXT,
     region TEXT,
     rotation_at TIMESTAMPTZ
 );

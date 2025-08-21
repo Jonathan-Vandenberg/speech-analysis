@@ -65,6 +65,12 @@ jobs:
             -e SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             -e SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}" \
             -e OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            -e JWT_SIGNING_SECRET="${{ secrets.JWT_SIGNING_SECRET }}" \
+            -e GITHUB_REPO="${{ secrets.REPO }}" \
+            -e GITHUB_PROVISION_WORKFLOW="${{ secrets.PROVISION_WORKFLOW }}" \
+            -e GITHUB_REF="${{ secrets.REF }}" \
+            -e GH_PROVISION_TOKEN="${{ secrets.GH_PROVISION_TOKEN }}" \
+            -e SCHOOL_SQL_PATH="/app/prisma/tenant_schema.sql" \
             -e LOG_LEVEL="INFO" \
             registry.digitalocean.com/jon-school/api:latest
           

@@ -54,8 +54,9 @@ def create_project(pat: str, org_id: str, name: str, db_password: str, region: s
     if resp.status_code not in (200, 201, 202):
         raise RuntimeError(f"Create project failed: {resp.status_code} {resp.text}")
     data = resp.json()
+    # Supabase returns an "id" which is also the project ref used in hostnames
     project_id = data.get("id") or data.get("project_id")
-    project_ref = data.get("ref") or data.get("reference_id") or data.get("project_ref")
+    project_ref = data.get("ref") or data.get("reference_id") or data.get("project_ref") or project_id
     if not project_id or not project_ref:
         raise RuntimeError(f"Unexpected create response: {data}")
     return project_id, project_ref
@@ -115,6 +116,11 @@ def main():
     print(f"Creating Supabase project for tenant {args.subdomain} in org {org}...")
     project_id, project_ref = create_project(pat, org, args.display_name, args.db_password, args.region)
     print(f"Project created: {project_id} ({project_ref}) - waiting for API keys to be ready...")
+    # Expose project_ref to subsequent workflow steps
+    gh_out = os.getenv("GITHUB_OUTPUT")
+    if gh_out:
+        with open(gh_out, "a") as f:
+            f.write(f"project_ref={project_ref}\n")
     time.sleep(5)
     supabase_url, anon_key, service_role_key = get_api_keys(pat, project_ref)
     print("Storing credentials in control plane...")

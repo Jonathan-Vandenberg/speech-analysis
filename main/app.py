@@ -15,8 +15,12 @@ from .middleware import api_key_bearer, APIKeyInfo
 from .schemas import (
     APIKeyCreateResponse, APIKeysListResponse, APIKeyUpdateRequest,
     UsageAnalyticsResponse, HealthCheckResponse, ErrorResponse,
-    TenantConfigResponse, TenantCreateRequest, TenantCreateResponse, TenantCredsRequest, LinkKeyRequest, TenantUpdateRequest, TenantProvisionRequest
+    TenantConfigResponse, TenantCreateRequest, TenantCreateResponse, TenantCredsRequest, LinkKeyRequest, TenantUpdateRequest, TenantProvisionRequest, TenantMigrationResponse
 )
+def _decrypt(ciphertext: str) -> str:
+    from .crypto import decrypt_string
+    return decrypt_string(ciphertext)
+
 import os
 import time
 import jwt
@@ -278,6 +282,49 @@ async def admin_store_tenant_creds(tenant_id: str, creds: TenantCredsRequest):
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to store credentials")
     return {"success": True}
+
+
+@app.post(
+    "/api/admin/tenants/{tenant_id}/migrate",
+    response_model=TenantMigrationResponse,
+    summary="Run school schema migration on tenant database",
+    tags=["Admin - Tenants"],
+)
+async def admin_migrate_tenant(tenant_id: str):
+    """Apply SQL migration to tenant DB using stored credentials.
+    For now, uses a bundled SQL file path exposed by SCHOOL_SQL_PATH env.
+    """
+    import psycopg
+    sql_path = os.getenv("SCHOOL_SQL_PATH")
+    if not sql_path or not os.path.exists(sql_path):
+        raise HTTPException(status_code=500, detail="SCHOOL_SQL_PATH not configured on server")
+    # Load tenant creds
+    if not db_manager.client:
+        raise HTTPException(status_code=503, detail="Control plane DB unavailable")
+    try:
+        row = db_manager.client.table("tenant_supabase_creds").select("supabase_url, anon_key, service_role_key_encrypted").eq("tenant_id", tenant_id).limit(1).execute()
+        if not row.data:
+            raise HTTPException(status_code=404, detail="Tenant credentials not found")
+        supabase_url = row.data[0]["supabase_url"].rstrip("/")
+        service_role = _decrypt(row.data[0]["service_role_key_encrypted"])
+        # Compose direct Postgres URL from Supabase URL
+        # Supabase standard: https://<ref>.supabase.co -> <ref>.supabase.co
+        host = supabase_url.replace("https://", "").replace("http://", "")
+        db_url = f"postgresql://postgres:{service_role}@db.{host}:5432/postgres?sslmode=require"
+        applied = 0
+        with open(sql_path, "r", encoding="utf-8") as f:
+            sql = f.read()
+        # Execute in a transaction
+        with psycopg.connect(db_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+                applied = cur.rowcount if cur.rowcount is not None else 0
+            conn.commit()
+        return TenantMigrationResponse(success=True, applied_statements=applied)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post(
