@@ -8,6 +8,8 @@ from typing import Optional
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from .database import db_manager, APIKeyInfo, UsageLogData
+import os
+import jwt
 
 logger = logging.getLogger("speech_analyzer")
 
@@ -53,6 +55,30 @@ class APIKeyBearer(HTTPBearer):
             return None
         
         try:
+            # Accept either Bearer sk-... API keys or JWT tenant tokens
+            if api_key.count('.') == 2:
+                try:
+                    payload = jwt.decode(api_key, os.getenv('JWT_SIGNING_SECRET', 'dev-secret-change-me'), algorithms=["HS256"])
+                    tenant_id = payload.get('sub')
+                    # Return a minimal APIKeyInfo-like object for downstream logging
+                    return APIKeyInfo(
+                        id="jwt-tenant",
+                        description="JWT tenant token",
+                        is_active=True,
+                        usage_count=0,
+                        minute_usage=0,
+                        daily_usage=0,
+                        monthly_usage=0,
+                        minute_limit=10**9,
+                        daily_limit=10**9,
+                        monthly_limit=10**9,
+                        last_used_at=None,
+                        created_at=None,  # type: ignore
+                        tenant_id=tenant_id,
+                    )
+                except Exception as e:
+                    logger.error(f"Invalid JWT token: {e}")
+                    # fall through to API key validation
             api_key_info = await db_manager.validate_api_key(api_key)
             return api_key_info
         except Exception as e:
@@ -136,6 +162,7 @@ class RequestTracker:
                 endpoint=request_info["endpoint"],
                 deep_analysis=deep_analysis,
                 use_audio=use_audio,
+                tenant_id=getattr(request_info["api_key_info"], "tenant_id", None),
                 audio_hash=audio_hash,
                 audio_duration_ms=audio_duration_ms,
                 text_length=len(expected_text) if expected_text else None,
@@ -216,4 +243,4 @@ async def track_ai_interaction(api_key_info: Optional[APIKeyInfo],
         "response_data": {"output_preview": output_text[:500]}  # Store preview only
     }
     
-    await db_manager.log_ai_interaction(api_key_info.id, interaction_data)
+    await db_manager.log_ai_interaction(api_key_info.id, interaction_data, getattr(api_key_info, 'tenant_id', None))

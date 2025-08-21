@@ -24,6 +24,14 @@ LOG_LEVEL=INFO
 WHISPER_MODEL=small
 WHISPER_COMPUTE_TYPE=auto
 WHISPER_BEAM_SIZE=1
+
+# Control Plane Encryption (for multi-tenant credentials)
+# Option A: Provide a Fernet key directly (recommended for production)
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+CP_ENCRYPTION_KEY="Da7IUuveopBqr6bkNCRfeAFi8NpJ2gPsy3m7baO1UPM="
+# Option B: Or use a strong passphrase and optional salt (base64 urlsafe)
+# CP_ENCRYPTION_PASSPHRASE=
+# CP_ENCRYPTION_SALT=
 ```
 
 ## Database Setup
@@ -32,9 +40,14 @@ WHISPER_BEAM_SIZE=1
    - Go to [supabase.com](https://supabase.com) and create a new project
    - Get your project URL and anon key from the project settings
 
-2. **Run Database Schema**:
-   - Execute the SQL in `database_schema.sql` in your Supabase SQL editor
-   - This creates all necessary tables, indexes, and functions
+2. **Run Database Schema (Usage + Admin)**:
+   - Execute `database_schema.sql` in your Supabase SQL editor
+   - This creates API key, usage logging, and analytics views
+
+3. **Enable Control Plane (Multi‑Tenant)**:
+   - Execute `control_plane_schema.sql` in the same Supabase project used by the API
+   - This creates `tenants`, `tenant_branding`, `tenant_supabase_creds`, and the `api_keys_tenants` link table
+   - It also adds `tenant_id` to `api_usage_logs` and updates `api_usage_analytics` to include tenant context
 
 3. **Verify Tables**:
    The schema creates these tables:

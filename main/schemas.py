@@ -170,3 +170,77 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
+# Multi-tenant models
+class TenantBranding(BaseModel):
+    logo_url: Optional[str] = None
+    primary_hex: Optional[str] = None
+    secondary_hex: Optional[str] = None
+    accent_hex: Optional[str] = None
+    dark_mode: Optional[bool] = False
+
+
+class TenantConfigResponse(BaseModel):
+    id: str
+    subdomain: str
+    display_name: str
+    status: str
+    branding: TenantBranding
+
+
+# Admin models for tenants/keys
+class TenantCreateRequest(BaseModel):
+    subdomain: str
+    display_name: str
+    status: str = "active"
+    branding: Optional[TenantBranding] = None
+    # Optional: also issue an API key and link it
+    issue_api_key: Optional[bool] = False
+    key_description: Optional[str] = None
+    minute_limit: Optional[int] = 10
+    daily_limit: Optional[int] = 1000
+    monthly_limit: Optional[int] = 10000
+
+
+class TenantCreateResponse(BaseModel):
+    id: str
+    subdomain: str
+    display_name: str
+    status: str
+    # Present only when issue_api_key=true
+    api_key: Optional[str] = None
+    key_id: Optional[str] = None
+
+
+class TenantUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    status: Optional[str] = None
+    branding: Optional[TenantBranding] = None
+
+
+class TenantProvisionRequest(BaseModel):
+    subdomain: str
+    display_name: str
+    region: Optional[str] = "us-east-1"
+
+
+class TenantCredsRequest(BaseModel):
+    supabase_url: str
+    anon_key: str
+    service_role_key: str
+    region: Optional[str] = None
+    rotation_at: Optional[str] = None
+
+
+class LinkKeyRequest(BaseModel):
+    key_id: str
+    tenant_id: Optional[str] = None
+    subdomain: Optional[str] = None
+
+    def preferred_id(self) -> dict:
+        payload = {}
+        if self.tenant_id:
+            payload["tenant_id"] = self.tenant_id
+        if self.subdomain:
+            payload["subdomain"] = self.subdomain
+        return payload
+

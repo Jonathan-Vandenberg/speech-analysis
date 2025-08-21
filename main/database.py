@@ -30,6 +30,8 @@ class APIKeyInfo(BaseModel):
     monthly_limit: int
     last_used_at: Optional[datetime]
     created_at: datetime
+    # Multi-tenant context (optional)
+    tenant_id: Optional[str] = None
 
 class UsageLogData(BaseModel):
     api_key_id: str
@@ -37,6 +39,7 @@ class UsageLogData(BaseModel):
     method: str = "POST"
     deep_analysis: bool = False
     use_audio: bool = False
+    tenant_id: Optional[str] = None
     audio_hash: Optional[str] = None
     audio_duration_ms: Optional[int] = None
     text_length: Optional[int] = None
@@ -95,7 +98,13 @@ class DatabaseManager:
                 return None
             
             key_data = result.data[0]
-            return APIKeyInfo(**key_data)
+            # Lookup tenant mapping if exists
+            try:
+                tenant_link = self.client.table("api_keys_tenants").select("tenant_id").eq("api_key_id", key_data["id"]).limit(1).execute()
+                tenant_id = tenant_link.data[0]["tenant_id"] if tenant_link.data else None
+            except Exception:
+                tenant_id = None
+            return APIKeyInfo(**key_data, tenant_id=tenant_id)
             
         except Exception as e:
             logger.error(f"Error validating API key: {e}")
@@ -177,7 +186,7 @@ class DatabaseManager:
             logger.error(f"Error logging pronunciation analysis: {e}")
             return False
     
-    async def log_ai_interaction(self, api_key_id: str, interaction_data: Dict[str, Any]) -> bool:
+    async def log_ai_interaction(self, api_key_id: str, interaction_data: Dict[str, Any], tenant_id: Optional[str] = None) -> bool:
         """Log AI model interactions for cost tracking."""
         if not self.client:
             return True  # Silently continue if database not available
@@ -196,6 +205,7 @@ class DatabaseManager:
                 "processing_time_ms": interaction_data.get("processing_time_ms"),
                 "request_data": json.dumps(interaction_data.get("request_data", {})),
                 "response_data": json.dumps(interaction_data.get("response_data", {})),
+                "tenant_id": tenant_id,
                 "created_at": datetime.utcnow().isoformat()
             }
             
@@ -282,21 +292,158 @@ class DatabaseManager:
         """Get usage analytics for the admin dashboard."""
         if not self.client:
             return {}
-        
         try:
             # Get usage data from the view
             result = self.client.table("api_usage_analytics").select("*").execute()
-            
             # Get recent usage logs for trends
-            logs_result = self.client.table("api_usage_logs").select("endpoint, deep_analysis, use_audio, created_at").gte("created_at", f"now() - interval '{days} days'").execute()
-            
+            logs_result = self.client.table("api_usage_logs").select(
+                "endpoint, deep_analysis, use_audio, created_at"
+            ).gte("created_at", f"now() - interval '{days} days'").execute()
             return {
                 "api_keys": result.data,
-                "recent_logs": logs_result.data
+                "recent_logs": logs_result.data,
             }
         except Exception as e:
             logger.error(f"Error fetching usage analytics: {e}")
-            return {}
+            return {"api_keys": [], "recent_logs": []}
+
+    async def get_tenant_id_by_subdomain(self, subdomain: Optional[str]) -> Optional[str]:
+        if not self.client or not subdomain:
+            return None
+        try:
+            res = self.client.table("tenants").select("id").eq("subdomain", subdomain).limit(1).execute()
+            if not res.data:
+                return None
+            return res.data[0]["id"]
+        except Exception as e:
+            logger.error(f"Error resolving tenant id for subdomain {subdomain}: {e}")
+            return None
+
+    async def get_tenant_config(self, *, subdomain: str | None = None, host: str | None = None) -> Optional[Dict[str, Any]]:
+        """Fetch tenant public config by subdomain or host.
+
+        If host is supplied like 'school.speechanalyser.com', the subdomain is
+        parsed as the first label.
+        """
+        if not self.client:
+            return None
+        try:
+            target_sub = subdomain
+            if not target_sub and host:
+                target_sub = host.split(":")[0].split(".")[0]
+            if not target_sub:
+                return None
+
+            t = self.client.table("tenants").select(
+                "id, subdomain, display_name, status"
+            ).eq("subdomain", target_sub).limit(1).execute()
+            if not t.data:
+                return None
+
+            tenant = t.data[0]
+            b = self.client.table("tenant_branding").select(
+                "logo_url, primary_hex, secondary_hex, accent_hex, dark_mode"
+            ).eq("tenant_id", tenant["id"]).limit(1).execute()
+            branding = b.data[0] if b.data else {}
+            return {**tenant, "branding": branding}
+        except Exception as e:
+            logger.error(f"Error fetching tenant config: {e}")
+            return None
+
+    async def create_tenant(self, subdomain: str, display_name: str, status: str = "active", branding: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        """Create a tenant and optional branding; return tenant_id."""
+        if not self.client:
+            return None
+        try:
+            res = self.client.table("tenants").insert({
+                "subdomain": subdomain,
+                "display_name": display_name,
+                "status": status,
+            }).execute()
+            if not res.data:
+                return None
+            tenant_id = res.data[0]["id"]
+            if branding:
+                self.client.table("tenant_branding").upsert({
+                    "tenant_id": tenant_id,
+                    **{k: v for k, v in branding.items() if v is not None},
+                }).execute()
+            return tenant_id
+        except Exception as e:
+            logger.error(f"Error creating tenant: {e}")
+            return None
+
+    async def store_tenant_creds(self, tenant_id: str, supabase_url: str, anon_key: str, service_role_key_encrypted: str, region: Optional[str] = None, rotation_at: Optional[str] = None) -> bool:
+        if not self.client:
+            return False
+        try:
+            self.client.table("tenant_supabase_creds").upsert({
+                "tenant_id": tenant_id,
+                "supabase_url": supabase_url,
+                "anon_key": anon_key,
+                "service_role_key_encrypted": service_role_key_encrypted,
+                "region": region,
+                "rotation_at": rotation_at,
+            }).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error storing tenant creds: {e}")
+            return False
+
+    async def link_key_to_tenant(self, key_id: str, tenant_id: Optional[str] = None, subdomain: Optional[str] = None) -> bool:
+        if not self.client:
+            return False
+        try:
+            resolved_tenant_id = tenant_id
+            if not resolved_tenant_id and subdomain:
+                tr = self.client.table("tenants").select("id").eq("subdomain", subdomain).limit(1).execute()
+                if not tr.data:
+                    return False
+                resolved_tenant_id = tr.data[0]["id"]
+            if not resolved_tenant_id:
+                return False
+            self.client.table("api_keys_tenants").upsert({
+                "api_key_id": key_id,
+                "tenant_id": resolved_tenant_id,
+            }).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error linking key to tenant: {e}")
+            return False
+
+    async def list_tenants(self) -> List[Dict[str, Any]]:
+        """List tenants with basic branding fields."""
+        if not self.client:
+            return []
+        try:
+            tenants = self.client.table("tenants").select("id, subdomain, display_name, status").execute().data
+            result: List[Dict[str, Any]] = []
+            for t in tenants:
+                b = self.client.table("tenant_branding").select("logo_url, primary_hex, secondary_hex, accent_hex, dark_mode").eq("tenant_id", t["id"]).limit(1).execute()
+                branding = b.data[0] if b.data else {}
+                result.append({**t, "branding": branding})
+            return result
+        except Exception as e:
+            logger.error(f"Error listing tenants: {e}")
+            return []
+
+    async def update_tenant(self, tenant_id: str, updates: Dict[str, Any]) -> bool:
+        if not self.client:
+            return False
+        try:
+            # Split branding vs core fields
+            branding = updates.pop("branding", None)
+            if updates:
+                self.client.table("tenants").update(updates).eq("id", tenant_id).execute()
+            if branding:
+                self.client.table("tenant_branding").upsert({
+                    "tenant_id": tenant_id,
+                    **branding,
+                }).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating tenant: {e}")
+            return False
 
 # Global database manager instance
 db_manager = DatabaseManager()

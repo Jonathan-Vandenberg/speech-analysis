@@ -14,8 +14,12 @@ from .database import db_manager
 from .middleware import api_key_bearer, APIKeyInfo
 from .schemas import (
     APIKeyCreateResponse, APIKeysListResponse, APIKeyUpdateRequest,
-    UsageAnalyticsResponse, HealthCheckResponse, ErrorResponse
+    UsageAnalyticsResponse, HealthCheckResponse, ErrorResponse,
+    TenantConfigResponse, TenantCreateRequest, TenantCreateResponse, TenantCredsRequest, LinkKeyRequest, TenantUpdateRequest, TenantProvisionRequest
 )
+import os
+import time
+import jwt
 
 
 FRONTEND_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001").split(",")
@@ -131,6 +135,183 @@ async def healthz():
         "database": db_status,
         "version": "1.0.0"
     }
+
+
+@app.get(
+    "/tenants/config",
+    response_model=TenantConfigResponse | None,
+    summary="Public tenant config",
+    description="Resolve tenant config by host or subdomain; returns branding and display info.",
+    tags=["Tenants"],
+)
+async def get_tenant_config(host: str | None = None, subdomain: str | None = None):
+    cfg = await db_manager.get_tenant_config(subdomain=subdomain, host=host)
+    if not cfg:
+        # Return 200 with null to let frontend show fallback
+        return None
+    return cfg
+
+
+@app.get(
+    "/api/admin/tenant-id",
+    summary="Resolve tenant id by subdomain",
+    tags=["Admin - Tenants"],
+)
+async def admin_resolve_tenant_id(subdomain: str):
+    tid = await db_manager.get_tenant_id_by_subdomain(subdomain)
+    return {"tenant_id": tid}
+
+
+def _jwt_secret() -> str:
+    secret = os.getenv("JWT_SIGNING_SECRET")
+    if not secret:
+        # Dev fallback; should be set in production
+        secret = "dev-secret-change-me"
+    return secret
+
+
+@app.post(
+    "/api/admin/tenants/{tenant_id}/token",
+    summary="Issue short-lived tenant access token",
+    tags=["Admin - Tenants"],
+)
+async def admin_issue_tenant_token(tenant_id: str, minutes: int = 10):
+    now = int(time.time())
+    exp = now + max(60, minutes * 60)
+    payload = {
+        "sub": tenant_id,
+        "scope": "tenant",
+        "exp": exp,
+        "iat": now,
+    }
+    token = jwt.encode(payload, _jwt_secret(), algorithm="HS256")
+    return {"token": token, "expires_at": exp}
+
+
+@app.post(
+    "/api/admin/tenants/{tenant_id}/provision",
+    summary="Trigger CI workflow to provision Supabase project",
+    tags=["Admin - Tenants"],
+)
+async def admin_trigger_provision(tenant_id: str, payload: TenantProvisionRequest):
+    import requests
+    gh_token = os.getenv("GITHUB_TOKEN_FOR_PROVISION") or os.getenv("GH_PROVISION_TOKEN")
+    repo = os.getenv("GITHUB_REPO", "owner/repo")
+    workflow = os.getenv("GITHUB_PROVISION_WORKFLOW", "provision-tenant.yml")
+    if not gh_token or repo == "owner/repo":
+        raise HTTPException(status_code=500, detail="Provisioning not configured")
+    url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
+    headers = {"Authorization": f"Bearer {gh_token}", "Accept": "application/vnd.github+json"}
+    payload = {
+        "ref": os.getenv("GITHUB_REF", "main"),
+        "inputs": {
+            "tenant_id": tenant_id,
+            "subdomain": payload.subdomain,
+            "display_name": payload.display_name,
+            "region": payload.region or "us-east-1",
+        }
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=30)
+    if resp.status_code not in (200, 201, 204):
+        raise HTTPException(status_code=500, detail=f"Failed to trigger workflow: {resp.status_code} {resp.text}")
+    return {"success": True}
+
+
+# Admin endpoints for control plane (protect at gateway or add auth later)
+@app.post(
+    "/api/admin/tenants",
+    response_model=TenantCreateResponse,
+    summary="Create tenant",
+    tags=["Admin - Tenants"],
+)
+async def admin_create_tenant(payload: TenantCreateRequest):
+    tenant_id = await db_manager.create_tenant(
+        subdomain=payload.subdomain,
+        display_name=payload.display_name,
+        status=payload.status,
+        branding=payload.branding.model_dump() if payload.branding else None,
+    )
+    if not tenant_id:
+        raise HTTPException(status_code=500, detail="Failed to create tenant")
+    # Optionally issue an API key and link it to the tenant
+    api_key_plain = None
+    key_id = None
+    if payload.issue_api_key:
+        try:
+            api_key_plain, key_id = await db_manager.create_api_key(
+                payload.key_description or f"Key for {payload.subdomain}",
+                payload.minute_limit or 10,
+                payload.daily_limit or 1000,
+                payload.monthly_limit or 10000,
+            )
+            await db_manager.link_key_to_tenant(key_id, tenant_id=tenant_id)
+        except Exception as e:
+            # Don't fail tenant creation if key creation fails; just omit key
+            key_id = None
+            api_key_plain = None
+    return {
+        "id": tenant_id,
+        "subdomain": payload.subdomain,
+        "display_name": payload.display_name,
+        "status": payload.status,
+        "api_key": api_key_plain,
+        "key_id": key_id,
+    }
+
+
+@app.post(
+    "/api/admin/tenants/{tenant_id}/db",
+    summary="Store tenant Supabase credentials (encrypted)",
+    tags=["Admin - Tenants"],
+)
+async def admin_store_tenant_creds(tenant_id: str, creds: TenantCredsRequest):
+    from .crypto import encrypt_string
+    encrypted = encrypt_string(creds.service_role_key)
+    ok = await db_manager.store_tenant_creds(
+        tenant_id,
+        creds.supabase_url,
+        creds.anon_key,
+        encrypted,
+        creds.region,
+        creds.rotation_at,
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to store credentials")
+    return {"success": True}
+
+
+@app.post(
+    "/api/admin/keys/link",
+    summary="Link API key to tenant",
+    tags=["Admin - API Keys"],
+)
+async def admin_link_key(payload: LinkKeyRequest):
+    ok = await db_manager.link_key_to_tenant(payload.key_id, tenant_id=payload.tenant_id, subdomain=payload.subdomain)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Failed to link key to tenant")
+    return {"success": True}
+
+
+@app.get(
+    "/api/admin/tenants",
+    summary="List tenants",
+    tags=["Admin - Tenants"],
+)
+async def admin_list_tenants():
+    tenants = await db_manager.list_tenants()
+    return {"tenants": tenants}
+
+
+@app.put(
+    "/api/admin/tenants/{tenant_id}",
+    summary="Update tenant (display/status/branding)",
+    tags=["Admin - Tenants"],
+)
+async def admin_update_tenant(tenant_id: str, payload: TenantUpdateRequest):
+    ok = await db_manager.update_tenant(tenant_id, payload.model_dump(exclude_unset=True))
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to update tenant")
+    return {"success": True}
 
 @app.get(
     "/api/admin/keys",
@@ -310,11 +491,14 @@ async def update_api_key(
 async def get_usage_analytics(
     days: int = 30
 ):
-    """Get usage analytics for admin dashboard."""
-    if not db_manager.is_available():
-        raise HTTPException(status_code=503, detail="Database not available")
-    
-    analytics = await db_manager.get_usage_analytics(days)
-    return analytics
+    """Get usage analytics for admin dashboard.
+    Returns empty analytics object if DB is unavailable or errors occur.
+    """
+    try:
+        analytics = await db_manager.get_usage_analytics(days)
+        # Ensure required keys exist
+        return analytics or {"api_keys": [], "recent_logs": []}
+    except Exception:
+        return {"api_keys": [], "recent_logs": []}
 
  

@@ -1,0 +1,50 @@
+name: Provision Tenant Supabase Project
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant_id:
+        description: Tenant UUID
+        required: true
+      subdomain:
+        description: Subdomain
+        required: true
+      display_name:
+        description: Display name
+        required: true
+      region:
+        description: Supabase region
+        required: true
+        default: us-east-1
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt requests
+
+      - name: Provision project and store creds
+        env:
+          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
+          SUPABASE_ORG_ID: ${{ secrets.SUPABASE_ORG_ID }}
+          CONTROL_PLANE_API_URL: ${{ secrets.CONTROL_PLANE_API_URL }}
+          DEFAULT_TENANT_DB_PASSWORD: ${{ secrets.DEFAULT_TENANT_DB_PASSWORD }}
+        run: |
+          python scripts/provision_tenant.py \
+            --tenant-id '${{ github.event.inputs.tenant_id }}' \
+            --subdomain '${{ github.event.inputs.subdomain }}' \
+            --display-name '${{ github.event.inputs.display_name }}' \
+            --region '${{ github.event.inputs.region }}'
+
+
