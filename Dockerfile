@@ -26,12 +26,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # We keep the image build robust by not failing if optional model fetch fails.
 
 # Copy application code
-# Copy application code
 COPY main/ ./main/
 COPY *.py ./
 
 # Optional: copy tenant schema SQL if present in build context
-COPY prisma/tenant_schema.sql ./prisma/tenant_schema.sql
+# In this repo, it's committed at app/prisma/tenant_schema.sql
+RUN mkdir -p prisma
+COPY app/prisma/tenant_schema.sql ./prisma/tenant_schema.sql
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash speech
