@@ -70,9 +70,8 @@ def get_api_keys(pat: str, project_ref: str, retries: int = 24, delay: int = 5) 
     if proj.status_code != 200:
         raise RuntimeError(f"Get project failed: {proj.status_code} {proj.text}")
     p = proj.json()
-    supabase_url = p.get("api_url") or p.get("api") or p.get("endpoint")
-    if not supabase_url:
-        raise RuntimeError(f"No api url in project: {p}")
+    # Some responses omit explicit API URL; derive from project_ref
+    supabase_url = p.get("api_url") or p.get("api") or p.get("endpoint") or f"https://{project_ref}.supabase.co"
 
     for attempt in range(1, retries + 1):
         r = requests.get(f"{SUPABASE_API}/v1/projects/{project_ref}/api-keys", headers=headers, timeout=60)
