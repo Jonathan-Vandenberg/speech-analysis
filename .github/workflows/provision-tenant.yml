@@ -60,6 +60,7 @@ jobs:
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
           SUPABASE_ORG_ID: ${{ secrets.SUPABASE_ORG_ID }}
+          CONTROL_PLANE_API_URL: ${{ secrets.CONTROL_PLANE_API_URL }}
         run: |
           echo "Triggering migration via control plane API"
           curl -sS -X POST "$CONTROL_PLANE_API_URL/api/admin/tenants/${{ github.event.inputs.tenant_id }}/migrate" -H 'Content-Type: application/json'
