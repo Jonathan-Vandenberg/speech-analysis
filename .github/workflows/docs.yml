@@ -1,4 +1,4 @@
-name: 📚 Update API Documentation
+name: Update API Documentation
 
 on:
   push:
@@ -30,29 +30,29 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
-    - name: 🔄 Checkout code
+    - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: 🐍 Set up Python
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
     
-    - name: 📦 Install dependencies
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
-    - name: 📄 Generate OpenAPI spec
+    - name: Generate OpenAPI spec
       run: |
         python generate_openapi.py
         cp openapi.json docs/
     
-    - name: 🎯 Validate OpenAPI spec
+    - name: Validate OpenAPI spec
       run: |
         # Check if the OpenAPI file is valid JSON
         python -c "import json; json.load(open('docs/openapi.json'))"
-        echo "✅ OpenAPI specification is valid JSON"
+        echo "OpenAPI specification is valid JSON"
         
         # Check if the file has the required fields
         python -c "
@@ -61,11 +61,11 @@ jobs:
         assert 'openapi' in spec, 'Missing openapi field'
         assert 'info' in spec, 'Missing info field'
         assert 'paths' in spec, 'Missing paths field'
-        print('✅ OpenAPI specification has required fields')
-        print(f'📄 Total endpoints: {len(spec[\"paths\"])}')
+        print('OpenAPI specification has required fields')
+        print(f'Total endpoints: {len(spec[\"paths\"])}')
         "
     
-    - name: 📊 Generate API stats
+    - name: Generate API stats
       run: |
         python -c "
         import json
@@ -84,26 +84,26 @@ jobs:
         with open('docs/api-stats.json', 'w') as f:
             json.dump(stats, f, indent=2)
 
-        print(f'📊 API Statistics generated')
-        print(f'🔢 Total endpoints: {stats[\"total_endpoints\"]}')
+        print(f'API Statistics generated')
+        print(f'Total endpoints: {stats[\"total_endpoints\"]}')
         "
     
-    - name: 📄 Setup Pages
+    - name: Setup Pages
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       uses: actions/configure-pages@v4
     
-    - name: 📦 Upload artifact
+    - name: Upload artifact
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       uses: actions/upload-pages-artifact@v3
       with:
         path: ./docs
     
-    - name: 🚀 Deploy to GitHub Pages
+    - name: Deploy to GitHub Pages
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
       id: deployment
       uses: actions/deploy-pages@v4
     
-    - name: 💬 Comment on PR
+    - name: Comment on PR
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v7
       with:
@@ -113,12 +113,12 @@ jobs:
           
           const comment = `## 📚 API Documentation Preview
           
-          **📊 API Statistics:**
-          - 🔢 Total endpoints: ${stats.total_endpoints}
-          - 📋 Version: ${stats.version}
-          - 🕒 Generated: ${stats.generated_at}
+          ** API Statistics:**
+          -  Total endpoints: ${stats.total_endpoints}
+          -  Version: ${stats.version}
+          -  Generated: ${stats.generated_at}
           
-          **🔗 Endpoints:**
+          ** Endpoints:**
           ${stats.endpoints.map(endpoint => `- \`${endpoint}\``).join('\n')}
           
           The documentation will be automatically updated when this PR is merged.
