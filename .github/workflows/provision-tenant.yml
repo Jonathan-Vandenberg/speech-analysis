@@ -24,6 +24,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || 'main' }}
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -34,6 +37,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt requests
+
+      - name: Debug script excerpt
+        run: |
+          echo 'Showing script lines 42-60 to verify db_pass payload:'
+          sed -n '42,60p' scripts/provision_tenant.py
 
       - name: Provision project and store creds
         env:
