@@ -302,7 +302,7 @@ async def admin_migrate_tenant(tenant_id: str):
     if not db_manager.client:
         raise HTTPException(status_code=503, detail="Control plane DB unavailable")
     try:
-        row = db_manager.client.table("tenant_supabase_creds").select("supabase_url, anon_key, service_role_key_encrypted, db_password_encrypted").eq("tenant_id", tenant_id).limit(1).execute()
+        row = db_manager.client.table("tenant_supabase_creds").select("supabase_url, anon_key, service_role_key_encrypted").eq("tenant_id", tenant_id).limit(1).execute()
         if not row.data:
             raise HTTPException(status_code=404, detail="Tenant credentials not found")
         supabase_url = row.data[0]["supabase_url"].rstrip("/")
