@@ -46,7 +46,7 @@ def create_project(pat: str, org_id: str, name: str, db_password: str, region: s
     payload = {
         "organization_id": org_id,
         "name": name,
-        "db_password": db_password,
+        "db_pass": db_password,  # field name expected by Supabase Management API
         "region": region,
         # Optional: "plan": "free"|"pro"
     }
