@@ -313,12 +313,27 @@ async def admin_migrate_tenant(tenant_id: str):
         # Use db.<ref>.supabase.co (A record), not the AAAA address from a DNS shortcut
         host = host if host.count('.') > 1 else f"{host}"
         db_host = f"db.{host}"
-        db_url = f"postgresql://postgres:{service_role}@{db_host}:5432/postgres?sslmode=require"
         applied = 0
         with open(sql_path, "r", encoding="utf-8") as f:
             sql = f.read()
+        # Resolve IPv4 and connect forcing IPv4 via hostaddr to avoid IPv6-only networks
+        import socket
+        ipv4 = None
+        try:
+            for fam, *_rest in socket.getaddrinfo(db_host, 5432, family=socket.AF_INET):
+                # getaddrinfo returns tuples; the IPv4 address is in the last element's first item
+                pass
+            ginfos = socket.getaddrinfo(db_host, 5432, family=socket.AF_INET)
+            if ginfos:
+                ipv4 = ginfos[0][4][0]
+        except Exception:
+            ipv4 = None
         # Execute in a transaction
-        with psycopg.connect(db_url) as conn:
+        if ipv4:
+            conn = psycopg.connect(host=db_host, hostaddr=ipv4, dbname="postgres", user="postgres", password=service_role, port=5432, sslmode="require")
+        else:
+            conn = psycopg.connect(host=db_host, dbname="postgres", user="postgres", password=service_role, port=5432, sslmode="require")
+        with conn:
             with conn.cursor() as cur:
                 cur.execute(sql)
                 applied = cur.rowcount if cur.rowcount is not None else 0
