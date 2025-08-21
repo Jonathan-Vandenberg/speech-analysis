@@ -227,6 +227,7 @@ class TenantCredsRequest(BaseModel):
     supabase_url: str
     anon_key: str
     service_role_key: str
+    db_password: Optional[str] = None
     region: Optional[str] = None
     rotation_at: Optional[str] = None
 

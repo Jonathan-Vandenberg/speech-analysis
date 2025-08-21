@@ -302,15 +302,18 @@ async def admin_migrate_tenant(tenant_id: str):
     if not db_manager.client:
         raise HTTPException(status_code=503, detail="Control plane DB unavailable")
     try:
-        row = db_manager.client.table("tenant_supabase_creds").select("supabase_url, anon_key, service_role_key_encrypted").eq("tenant_id", tenant_id).limit(1).execute()
+        row = db_manager.client.table("tenant_supabase_creds").select("supabase_url, anon_key, service_role_key_encrypted, db_password_encrypted").eq("tenant_id", tenant_id).limit(1).execute()
         if not row.data:
             raise HTTPException(status_code=404, detail="Tenant credentials not found")
         supabase_url = row.data[0]["supabase_url"].rstrip("/")
         service_role = _decrypt(row.data[0]["service_role_key_encrypted"])
-        # Compose direct Postgres URL from Supabase URL
+        # Compose direct Postgres URL from Supabase URL (IPv4 hostname)
         # Supabase standard: https://<ref>.supabase.co -> <ref>.supabase.co
         host = supabase_url.replace("https://", "").replace("http://", "")
-        db_url = f"postgresql://postgres:{service_role}@db.{host}:5432/postgres?sslmode=require"
+        # Use db.<ref>.supabase.co (A record), not the AAAA address from a DNS shortcut
+        host = host if host.count('.') > 1 else f"{host}"
+        db_host = f"db.{host}"
+        db_url = f"postgresql://postgres:{service_role}@{db_host}:5432/postgres?sslmode=require"
         applied = 0
         with open(sql_path, "r", encoding="utf-8") as f:
             sql = f.read()
