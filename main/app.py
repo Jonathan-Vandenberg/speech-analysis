@@ -294,7 +294,7 @@ async def admin_migrate_tenant(tenant_id: str):
     """Apply SQL migration to tenant DB using stored credentials.
     For now, uses a bundled SQL file path exposed by SCHOOL_SQL_PATH env.
     """
-    import psycopg
+    import requests
     sql_path = os.getenv("SCHOOL_SQL_PATH")
     if not sql_path or not os.path.exists(sql_path):
         raise HTTPException(status_code=500, detail="SCHOOL_SQL_PATH not configured on server")
@@ -307,37 +307,40 @@ async def admin_migrate_tenant(tenant_id: str):
             raise HTTPException(status_code=404, detail="Tenant credentials not found")
         supabase_url = row.data[0]["supabase_url"].rstrip("/")
         service_role = _decrypt(row.data[0]["service_role_key_encrypted"])
-        # Compose direct Postgres URL from Supabase URL (IPv4 hostname)
-        # Supabase standard: https://<ref>.supabase.co -> <ref>.supabase.co
-        host = supabase_url.replace("https://", "").replace("http://", "")
-        # Use db.<ref>.supabase.co (A record), not the AAAA address from a DNS shortcut
-        host = host if host.count('.') > 1 else f"{host}"
-        db_host = f"db.{host}"
         applied = 0
         with open(sql_path, "r", encoding="utf-8") as f:
             sql = f.read()
-        # Resolve IPv4 and connect forcing IPv4 via hostaddr to avoid IPv6-only networks
-        import socket
-        ipv4 = None
+        # Prefer Supabase Postgres HTTP (pg-meta) endpoint to avoid direct DB connectivity issues (IPv6)
+        headers = {
+            "Authorization": f"Bearer {service_role}",
+            "apikey": service_role,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        # Try official Postgres HTTP path first, then fallback to pg-meta legacy path
+        urls_to_try = [
+            f"{supabase_url}/postgres/v1/query",
+            f"{supabase_url}/pg/sql",
+        ]
+        last_error = None
+        for url in urls_to_try:
+            try:
+                resp = requests.post(url, headers=headers, json={"query": sql}, timeout=180)
+                if resp.status_code == 200:
+                    break
+                last_error = f"{resp.status_code} {resp.text[:500]}"
+            except Exception as e:
+                last_error = str(e)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"pg-meta sql failed: {last_error}")
         try:
-            for fam, *_rest in socket.getaddrinfo(db_host, 5432, family=socket.AF_INET):
-                # getaddrinfo returns tuples; the IPv4 address is in the last element's first item
-                pass
-            ginfos = socket.getaddrinfo(db_host, 5432, family=socket.AF_INET)
-            if ginfos:
-                ipv4 = ginfos[0][4][0]
+            data = resp.json()
         except Exception:
-            ipv4 = None
-        # Execute in a transaction
-        if ipv4:
-            conn = psycopg.connect(host=db_host, hostaddr=ipv4, dbname="postgres", user="postgres", password=service_role, port=5432, sslmode="require")
-        else:
-            conn = psycopg.connect(host=db_host, dbname="postgres", user="postgres", password=service_role, port=5432, sslmode="require")
-        with conn:
-            with conn.cursor() as cur:
-                cur.execute(sql)
-                applied = cur.rowcount if cur.rowcount is not None else 0
-            conn.commit()
+            data = None
+        # If pg-meta returns an error field
+        if isinstance(data, dict) and data.get("error"):
+            raise HTTPException(status_code=500, detail=f"pg-meta error: {data['error']}")
+        applied = 1
         return TenantMigrationResponse(success=True, applied_statements=applied)
     except HTTPException:
         raise
