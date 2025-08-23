@@ -353,9 +353,10 @@ async def admin_migrate_tenant(tenant_id: str):
             db_password = os.getenv("DEFAULT_TENANT_DB_PASSWORD")
             if not db_password:
                 raise HTTPException(status_code=500, detail=f"pg-meta sql failed: {last_error}; fallback requires DEFAULT_TENANT_DB_PASSWORD env")
+            import psycopg
+            last_exc: Exception | None = None
+            # Try variant 1: username includes project ref
             try:
-                import psycopg
-                # Supavisor session mode typically uses port 6543 and username includes project ref
                 conn = psycopg.connect(
                     host=pooler_host,
                     dbname="postgres",
@@ -370,8 +371,28 @@ async def admin_migrate_tenant(tenant_id: str):
                         cur.execute(sql)
                     conn.commit()
                 return TenantMigrationResponse(success=True, applied_statements=1)
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"pg-meta sql failed and supavisor fallback failed: {e}")
+            except Exception as e1:
+                last_exc = e1
+            # Try variant 2: options=project=<ref> with plain username
+            try:
+                conn = psycopg.connect(
+                    host=pooler_host,
+                    dbname="postgres",
+                    user="postgres",
+                    password=db_password,
+                    options=f"project={project_ref}",
+                    port=6543,
+                    sslmode="require",
+                    connect_timeout=30,
+                )
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(sql)
+                    conn.commit()
+                return TenantMigrationResponse(success=True, applied_statements=1)
+            except Exception as e2:
+                last_exc = e2
+            raise HTTPException(status_code=500, detail=f"pg-meta sql failed and supavisor fallback failed: {last_exc}")
         try:
             data = resp.json()
         except Exception:

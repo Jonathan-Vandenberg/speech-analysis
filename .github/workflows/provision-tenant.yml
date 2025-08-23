@@ -44,6 +44,7 @@ jobs:
           sed -n '42,60p' scripts/provision_tenant.py
 
       - name: Provision project and store creds
+        id: provision
         env:
           SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
           SUPABASE_ORG_ID: ${{ secrets.SUPABASE_ORG_ID }}
@@ -56,13 +57,20 @@ jobs:
             --display-name '${{ github.event.inputs.display_name }}' \
             --region '${{ github.event.inputs.region }}'
 
-      - name: Run school schema migrations on new project
-        env:
-          SUPABASE_PAT: ${{ secrets.SUPABASE_PAT }}
-          SUPABASE_ORG_ID: ${{ secrets.SUPABASE_ORG_ID }}
-          CONTROL_PLANE_API_URL: ${{ secrets.CONTROL_PLANE_API_URL }}
+      - name: Install psql client
         run: |
-          echo "Triggering migration via control plane API"
-          curl -sS -X POST "$CONTROL_PLANE_API_URL/api/admin/tenants/${{ github.event.inputs.tenant_id }}/migrate" -H 'Content-Type: application/json'
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run school schema migrations via psql (Supavisor)
+        env:
+          REGION: ${{ github.event.inputs.region }}
+          PROJECT_REF: ${{ steps.provision.outputs.project_ref }}
+          DB_PASS: ${{ secrets.DEFAULT_TENANT_DB_PASSWORD }}
+        run: |
+          echo "Applying SQL to tenant DB via Supavisor"
+          HOST="aws-0-$REGION.pooler.supabase.com"
+          export PGPASSWORD="$DB_PASS"
+          psql -h "$HOST" -p 6543 -U "postgres.$PROJECT_REF" -d postgres -v ON_ERROR_STOP=1 -f app/prisma/tenant_schema.sql | sed -e 's/.\{200\}/&\n/g' | head -n 1000
 
 
