@@ -79,10 +79,10 @@ jobs:
           # URL-encode password (use one-liner to keep YAML clean)
           ENC_PASS=$(python3 -c "import os,urllib.parse;print(urllib.parse.quote(os.environ.get('DB_PASS','')))" )
           # Attempt 1: username includes project ref (session mode)
-          DB_URL_1="postgres://postgres.${PROJECT_REF}:${ENC_PASS}@${HOST}:5432/postgres?sslmode=require"
+          DB_URL_1="postgres://postgres.${PROJECT_REF}:${ENC_PASS}@${HOST}:6543/postgres?sslmode=require"
           # Attempt 2: plain username + options=project (fallback)
           ENCODED_OPTS="project%3D$PROJECT_REF"
-          DB_URL_2="postgres://postgres:${ENC_PASS}@${HOST}:5432/postgres?sslmode=require&options=${ENCODED_OPTS}"
+          DB_URL_2="postgres://postgres:${ENC_PASS}@${HOST}:6543/postgres?sslmode=require&options=${ENCODED_OPTS}"
 
           echo "Checking DB readiness via supabase db pull"; READY=""; for i in $(seq 1 24); do echo "Attempt $i: pull with user=postgres.$PROJECT_REF"; if supabase db pull --db-url "$DB_URL_1" --workdir ./supabase --debug > /dev/null 2>&1; then READY="$DB_URL_1"; break; fi; echo "Attempt $i: pull with options=project=$PROJECT_REF"; if supabase db pull --db-url "$DB_URL_2" --workdir ./supabase --debug > /dev/null 2>&1; then READY="$DB_URL_2"; break; fi; sleep 5; done
           if [ -z "$READY" ]; then
@@ -90,6 +90,6 @@ jobs:
             exit 1
           fi
 
-          echo "DB ready. Applying migration using: $READY"; mkdir -p supabase/migrations; TS=$(date +%s); cp app/prisma/tenant_schema.sql "supabase/migrations/${TS}_tenant_schema.sql"; supabase db push --db-url "$READY" --workdir ./supabase --yes
+          echo "DB ready. Applying migration using: $READY"; mkdir -p supabase/migrations; TS=$(date +%s); cp app/prisma/tenant_schema.sql "supabase/migrations/${TS}_tenant_schema.sql"; supabase db push --db-url "$READY" --workdir ./supabase --yes --debug; echo "Verifying schema..."; supabase db pull --db-url "$READY" --workdir ./supabase --debug | head -n 100
 
 
