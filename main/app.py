@@ -355,13 +355,13 @@ async def admin_migrate_tenant(tenant_id: str):
                 raise HTTPException(status_code=500, detail=f"pg-meta sql failed: {last_error}; fallback requires DEFAULT_TENANT_DB_PASSWORD env")
             try:
                 import psycopg
+                # Supavisor session mode typically uses port 6543 and username includes project ref
                 conn = psycopg.connect(
                     host=pooler_host,
                     dbname="postgres",
-                    user="postgres",
+                    user=f"postgres.{project_ref}",
                     password=db_password,
-                    options=f"project={project_ref}",
-                    port=5432,
+                    port=6543,
                     sslmode="require",
                     connect_timeout=30,
                 )
