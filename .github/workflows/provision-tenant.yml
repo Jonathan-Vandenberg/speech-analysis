@@ -73,16 +73,28 @@ jobs:
           REGION: ${{ github.event.inputs.region }}
           PROJECT_REF: ${{ steps.provision.outputs.project_ref }}
           DB_PASS: ${{ secrets.DEFAULT_TENANT_DB_PASSWORD }}
+          TENANT_ID: ${{ github.event.inputs.tenant_id }}
+          SUBDOMAIN: ${{ github.event.inputs.subdomain }}
         run: |
           echo "Applying SQL to tenant DB via Supabase CLI"
           HOST="aws-0-$REGION.pooler.supabase.com"
+          echo "Tenant: $TENANT_ID | Subdomain: $SUBDOMAIN"
+          echo "Region: $REGION | Project ref: $PROJECT_REF"
+          echo "Pooler host: $HOST"
+          echo "DB user (session): postgres.$PROJECT_REF"
+          echo "DB user (options): postgres with options=project=$PROJECT_REF"
+          echo "Masking DB_PASS"; echo "::add-mask::$DB_PASS"; echo "Length(DB_PASS)=${#DB_PASS}"
+          printf "%s" "$DB_PASS" | sha256sum | awk '{print "DB_PASS sha256 (first 8): " substr($1,1,8)}'
           # URL-encode password (use one-liner to keep YAML clean)
           ENC_PASS=$(python3 -c "import os,urllib.parse;print(urllib.parse.quote(os.environ.get('DB_PASS','')))" )
+          echo "::add-mask::$ENC_PASS"
           # Attempt 1: username includes project ref (session mode)
           DB_URL_1="postgres://postgres.${PROJECT_REF}:${ENC_PASS}@${HOST}:6543/postgres?sslmode=require"
           # Attempt 2: plain username + options=project (fallback)
           ENCODED_OPTS="project%3D$PROJECT_REF"
           DB_URL_2="postgres://postgres:${ENC_PASS}@${HOST}:6543/postgres?sslmode=require&options=${ENCODED_OPTS}"
+          echo "DB_URL_1 (sanitized): ${DB_URL_1/:${ENC_PASS}/:***}"
+          echo "DB_URL_2 (sanitized): ${DB_URL_2/:${ENC_PASS}/:***}"
 
           echo "Checking DB readiness via supabase db pull"; READY=""; for i in $(seq 1 24); do echo "Attempt $i: pull with user=postgres.$PROJECT_REF"; if supabase db pull --db-url "$DB_URL_1" --workdir ./supabase --debug > /dev/null 2>&1; then READY="$DB_URL_1"; break; fi; echo "Attempt $i: pull with options=project=$PROJECT_REF"; if supabase db pull --db-url "$DB_URL_2" --workdir ./supabase --debug > /dev/null 2>&1; then READY="$DB_URL_2"; break; fi; sleep 5; done
           if [ -z "$READY" ]; then
