@@ -317,22 +317,61 @@ async def admin_migrate_tenant(tenant_id: str):
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        # Try official Postgres HTTP path first, then fallback to pg-meta legacy path
+        # Try official Postgres HTTP path first, then fallback to pg-meta legacy path(s)
         urls_to_try = [
             f"{supabase_url}/postgres/v1/query",
-            f"{supabase_url}/pg/sql",
+            f"{supabase_url}/pg-meta/query",
         ]
         last_error = None
+        resp = None
         for url in urls_to_try:
             try:
+                # Some deployments expect 'q', others expect 'query'
+                resp = requests.post(url, headers=headers, json={"q": sql, "params": []}, timeout=180)
+                if resp.status_code == 200:
+                    break
+                # Retry same URL with alternate payload shape
                 resp = requests.post(url, headers=headers, json={"query": sql}, timeout=180)
                 if resp.status_code == 200:
                     break
                 last_error = f"{resp.status_code} {resp.text[:500]}"
             except Exception as e:
                 last_error = str(e)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=500, detail=f"pg-meta sql failed: {last_error}")
+        if not resp or resp.status_code != 200:
+            # Fallback: connect via Supavisor (IPv4 pooler) using DB password
+            region = None
+            try:
+                # Try to fetch region if stored alongside creds
+                cr = db_manager.client.table("tenant_supabase_creds").select("region").eq("tenant_id", tenant_id).limit(1).execute()
+                if cr.data:
+                    region = cr.data[0].get("region")
+            except Exception:
+                region = None
+            region = region or "us-east-1"
+            project_ref = supabase_url.split("//")[-1].split(".")[0]
+            pooler_host = f"aws-0-{region}.pooler.supabase.com"
+            db_password = os.getenv("DEFAULT_TENANT_DB_PASSWORD")
+            if not db_password:
+                raise HTTPException(status_code=500, detail=f"pg-meta sql failed: {last_error}; fallback requires DEFAULT_TENANT_DB_PASSWORD env")
+            try:
+                import psycopg
+                conn = psycopg.connect(
+                    host=pooler_host,
+                    dbname="postgres",
+                    user="postgres",
+                    password=db_password,
+                    options=f"project={project_ref}",
+                    port=5432,
+                    sslmode="require",
+                    connect_timeout=30,
+                )
+                with conn:
+                    with conn.cursor() as cur:
+                        cur.execute(sql)
+                    conn.commit()
+                return TenantMigrationResponse(success=True, applied_statements=1)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"pg-meta sql failed and supavisor fallback failed: {e}")
         try:
             data = resp.json()
         except Exception:

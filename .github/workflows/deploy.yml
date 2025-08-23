@@ -8,6 +8,7 @@ on:
       - 'requirements.txt'
       - 'Dockerfile'
       - '.github/workflows/deploy.yml'
+  workflow_dispatch:
 
 env:
   REGISTRY: registry.digitalocean.com
@@ -72,6 +73,7 @@ jobs:
             -e GH_PROVISION_TOKEN="${{ secrets.GH_PROVISION_TOKEN }}" \
             -e CP_ENCRYPTION_KEY="${{ secrets.CP_ENCRYPTION_KEY }}" \
             -e SCHOOL_SQL_PATH="/app/prisma/tenant_schema.sql" \
+            -e DEFAULT_TENANT_DB_PASSWORD="${{ secrets.DEFAULT_TENANT_DB_PASSWORD }}" \
             -e LOG_LEVEL="INFO" \
             registry.digitalocean.com/jon-school/api:latest
           
