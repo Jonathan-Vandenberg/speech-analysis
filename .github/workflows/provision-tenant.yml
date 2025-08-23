@@ -77,7 +77,7 @@ jobs:
           SUBDOMAIN: ${{ github.event.inputs.subdomain }}
         run: |
           echo "Applying SQL to tenant DB via Supabase CLI"
-          HOST="aws-0-$REGION.pooler.supabase.com"
+          HOST="aws-1-$REGION.pooler.supabase.com"
           echo "Tenant: $TENANT_ID | Subdomain: $SUBDOMAIN"
           echo "Region: $REGION | Project ref: $PROJECT_REF"
           echo "Pooler host: $HOST"
