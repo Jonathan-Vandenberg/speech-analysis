@@ -68,7 +68,7 @@ jobs:
           sudo dpkg -i supabase.deb
           supabase --version
 
-      - name: Run school schema migrations via Supabase CLI
+      - name: Run school schema migrations via psql (transaction pooler)
         env:
           REGION: ${{ github.event.inputs.region }}
           PROJECT_REF: ${{ steps.provision.outputs.project_ref }}
@@ -76,7 +76,8 @@ jobs:
           TENANT_ID: ${{ github.event.inputs.tenant_id }}
           SUBDOMAIN: ${{ github.event.inputs.subdomain }}
         run: |
-          echo "Applying SQL to tenant DB via Supabase CLI"
+          echo "Applying SQL to tenant DB via psql (transaction pooler)"
+          sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y postgresql-client >/dev/null 2>&1
           HOST="aws-1-$REGION.pooler.supabase.com"
           echo "Tenant: $TENANT_ID | Subdomain: $SUBDOMAIN"
           echo "Region: $REGION | Project ref: $PROJECT_REF"
@@ -85,22 +86,21 @@ jobs:
           echo "DB user (options): postgres with options=project=$PROJECT_REF"
           echo "Masking DB_PASS"; echo "::add-mask::$DB_PASS"; echo "Length(DB_PASS)=${#DB_PASS}"
           printf "%s" "$DB_PASS" | sha256sum | awk '{print "DB_PASS sha256 (first 8): " substr($1,1,8)}'
-          # Build the single, expected transaction pooler DSN
-          ENC_PASS=$(python3 -c "import os,urllib.parse;print(urllib.parse.quote(os.environ['DB_PASS']))")
-          echo "::add-mask::$ENC_PASS"
-          DB_URL="postgresql://postgres.${PROJECT_REF}:${ENC_PASS}@${HOST}:6543/postgres?sslmode=require"
-          echo "Checking DB readiness via supabase db pull"
+          echo "Checking DB readiness via psql"
+          export PGPASSWORD="$DB_PASS"
           READY=0
           for i in $(seq 1 120); do
-            echo "Attempt $i: pull with user=postgres.$PROJECT_REF"
-            if supabase db pull --db-url "$DB_URL" --workdir ./supabase --debug > /dev/null 2>&1; then READY=1; break; fi
+            echo "Attempt $i: select 1"
+            if psql -h "$HOST" -p 6543 -U "postgres.$PROJECT_REF" -d postgres -c "select 1;" >/dev/null 2>&1; then READY=1; break; fi
             sleep 5
           done
-          if [ $READY -ne 1 ]; then
+          if [ "$READY" -ne 1 ]; then
             echo "Database not ready after waiting. Exiting." >&2
             exit 1
           fi
-
-          echo "DB ready. Applying migration"; mkdir -p supabase/migrations; TS=$(date +%s); cp app/prisma/tenant_schema.sql "supabase/migrations/${TS}_tenant_schema.sql"; supabase db push --db-url "$DB_URL" --workdir ./supabase --yes --debug; echo "Verifying schema..."; supabase db pull --db-url "$DB_URL" --workdir ./supabase --debug | head -n 100
+          echo "DB ready. Applying migration via psql"
+          psql -h "$HOST" -p 6543 -U "postgres.$PROJECT_REF" -d postgres -v ON_ERROR_STOP=1 -f app/prisma/tenant_schema.sql
+          echo "Schema applied. Verifying with select count(*) from pg_tables;"
+          psql -h "$HOST" -p 6543 -U "postgres.$PROJECT_REF" -d postgres -c "select count(*) from pg_tables;" | head -n 20
 
 
