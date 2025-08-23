@@ -70,7 +70,8 @@ jobs:
         run: |
           echo "Applying SQL to tenant DB via Supavisor"
           HOST="aws-0-$REGION.pooler.supabase.com"
-          export PGPASSWORD="$DB_PASS"
-          psql -h "$HOST" -p 6543 -U "postgres.$PROJECT_REF" -d postgres -v ON_ERROR_STOP=1 -f app/prisma/tenant_schema.sql | sed -e 's/.\{200\}/&\n/g' | head -n 1000
+          echo "Host: $HOST | Project: $PROJECT_REF"
+          CONN="host=$HOST port=6543 dbname=postgres user=postgres password=$DB_PASS sslmode=require options=project=$PROJECT_REF"
+          psql "$CONN" -v ON_ERROR_STOP=1 -f app/prisma/tenant_schema.sql | sed -e 's/.\{200\}/&\n/g' | head -n 1000
 
 
