@@ -373,18 +373,29 @@ class DatabaseManager:
             logger.error(f"Error creating tenant: {e}")
             return None
 
-    async def store_tenant_creds(self, tenant_id: str, supabase_url: str, anon_key: str, service_role_key_encrypted: str, region: Optional[str] = None, rotation_at: Optional[str] = None) -> bool:
+    async def store_tenant_creds(self, tenant_id: str, supabase_url: str, anon_key: str, service_role_key_encrypted: str, region: Optional[str] = None, rotation_at: Optional[str] = None, db_password_encrypted: Optional[str] = None) -> bool:
         if not self.client:
             return False
         try:
-            self.client.table("tenant_supabase_creds").upsert({
+            payload = {
                 "tenant_id": tenant_id,
                 "supabase_url": supabase_url,
                 "anon_key": anon_key,
                 "service_role_key_encrypted": service_role_key_encrypted,
                 "region": region,
                 "rotation_at": rotation_at,
-            }).execute()
+            }
+            if db_password_encrypted is not None:
+                # Only include if column exists; ignore errors otherwise
+                try:
+                    payload["db_password_encrypted"] = db_password_encrypted
+                    self.client.table("tenant_supabase_creds").upsert(payload).execute()
+                except Exception:
+                    # Retry without the password column if schema doesn't have it
+                    payload.pop("db_password_encrypted", None)
+                    self.client.table("tenant_supabase_creds").upsert(payload).execute()
+            else:
+                self.client.table("tenant_supabase_creds").upsert(payload).execute()
             return True
         except Exception as e:
             logger.error(f"Error storing tenant creds: {e}")

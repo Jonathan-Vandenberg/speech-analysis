@@ -57,21 +57,21 @@ jobs:
             --display-name '${{ github.event.inputs.display_name }}' \
             --region '${{ github.event.inputs.region }}'
 
-      - name: Install psql client
+      - name: Install Supabase CLI
         run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          curl -fsSL https://supabase.com/cli/install | sh
 
-      - name: Run school schema migrations via psql (Supavisor)
+      - name: Run school schema migrations via Supabase CLI
         env:
           REGION: ${{ github.event.inputs.region }}
           PROJECT_REF: ${{ steps.provision.outputs.project_ref }}
           DB_PASS: ${{ secrets.DEFAULT_TENANT_DB_PASSWORD }}
         run: |
-          echo "Applying SQL to tenant DB via Supavisor"
+          echo "Applying SQL to tenant DB via Supabase CLI"
           HOST="aws-0-$REGION.pooler.supabase.com"
-          echo "Host: $HOST | Project: $PROJECT_REF"
-          CONN="host=$HOST port=6543 dbname=postgres user=postgres password=$DB_PASS sslmode=require options=project=$PROJECT_REF"
-          psql "$CONN" -v ON_ERROR_STOP=1 -f app/prisma/tenant_schema.sql | sed -e 's/.\{200\}/&\n/g' | head -n 1000
+          ENCODED_OPTS="project%3D$PROJECT_REF"
+          DB_URL="postgres://postgres:${DB_PASS}@${HOST}:5432/postgres?sslmode=require&options=${ENCODED_OPTS}"
+          echo "DB_URL host=$HOST project=$PROJECT_REF"
+          ./supabase db execute --file app/prisma/tenant_schema.sql --db-url "$DB_URL"
 
 

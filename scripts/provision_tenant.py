@@ -131,7 +131,19 @@ def main():
     time.sleep(5)
     supabase_url, anon_key, service_role_key = get_api_keys(pat, project_ref)
     print("Storing credentials in control plane...")
-    store_creds(api_base, args.tenant_id, supabase_url, anon_key, service_role_key, args.region)
+    # Also persist the DB password used at creation so migrations can use pooler auth
+    store_payload = {
+        "supabase_url": supabase_url,
+        "anon_key": anon_key,
+        "service_role_key": service_role_key,
+        "region": args.region,
+    }
+    if args.db_password:
+        store_payload["db_password"] = args.db_password
+    url = f"{api_base.rstrip('/')}/api/admin/tenants/{args.tenant_id}/db"
+    resp = requests.post(url, json=store_payload, timeout=60)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Store creds failed: {resp.status_code} {resp.text}")
     print("✅ Tenant provisioned and credentials stored.")
 
 

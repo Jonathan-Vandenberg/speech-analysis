@@ -271,6 +271,8 @@ async def admin_create_tenant(payload: TenantCreateRequest):
 async def admin_store_tenant_creds(tenant_id: str, creds: TenantCredsRequest):
     from .crypto import encrypt_string
     encrypted = encrypt_string(creds.service_role_key)
+    # Optionally encrypt and store db password if provided
+    db_pw_enc = encrypt_string(creds.db_password) if getattr(creds, "db_password", None) else None
     ok = await db_manager.store_tenant_creds(
         tenant_id,
         creds.supabase_url,
@@ -278,6 +280,7 @@ async def admin_store_tenant_creds(tenant_id: str, creds: TenantCredsRequest):
         encrypted,
         creds.region,
         creds.rotation_at,
+        db_password_encrypted=db_pw_enc,
     )
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to store credentials")
