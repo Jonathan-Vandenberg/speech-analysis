@@ -79,6 +79,9 @@ jobs:
           ENCODED_OPTS="project%3D$PROJECT_REF"
           DB_URL="postgres://postgres:${DB_PASS}@${HOST}:5432/postgres?sslmode=require&options=${ENCODED_OPTS}"
           echo "DB_URL host=$HOST project=$PROJECT_REF"
-          supabase db execute --file app/prisma/tenant_schema.sql --db-url "$DB_URL"
+          mkdir -p supabase/migrations
+          TS=$(date +%s)
+          cp app/prisma/tenant_schema.sql "supabase/migrations/${TS}_tenant_schema.sql"
+          supabase db push --db-url "$DB_URL" --workdir ./supabase --yes
 
 
