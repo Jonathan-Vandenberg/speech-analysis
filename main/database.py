@@ -337,6 +337,7 @@ class DatabaseManager:
             t = self.client.table("tenants").select(
                 "id, subdomain, display_name, status"
             ).eq("subdomain", target_sub).limit(1).execute()
+            
             if not t.data:
                 return None
 
@@ -344,6 +345,7 @@ class DatabaseManager:
             b = self.client.table("tenant_branding").select(
                 "logo_url, primary_hex, secondary_hex, accent_hex, dark_mode"
             ).eq("tenant_id", tenant["id"]).limit(1).execute()
+            
             branding = b.data[0] if b.data else {}
             return {**tenant, "branding": branding}
         except Exception as e:
@@ -454,6 +456,29 @@ class DatabaseManager:
             return True
         except Exception as e:
             logger.error(f"Error updating tenant: {e}")
+            return False
+
+    async def update_tenant_branding(self, tenant_id: str, branding: Dict[str, Any]) -> bool:
+        """Update tenant branding configuration."""
+        if not self.client:
+            return False
+        try:
+            # Filter out None values and prepare branding data
+            branding_data = {
+                "tenant_id": tenant_id,
+            }
+            
+            # Only include non-null values
+            for key, value in branding.items():
+                if value is not None:
+                    branding_data[key] = value
+            
+            # Upsert the branding data
+            self.client.table("tenant_branding").upsert(branding_data).execute()
+            logger.info(f"Updated branding for tenant {tenant_id}: {branding_data}")
+            return True
+        except Exception as e:
+            logger.error(f"Error updating tenant branding: {e}")
             return False
 
 # Global database manager instance

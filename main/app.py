@@ -166,6 +166,44 @@ async def admin_resolve_tenant_id(subdomain: str):
     return {"tenant_id": tid}
 
 
+@app.post(
+    "/tenants/branding",
+    summary="Update tenant branding",
+    tags=["Tenants"],
+)
+async def update_tenant_branding(request: dict):
+    """Update tenant branding configuration."""
+    try:
+        host = request.get("host")
+        branding = request.get("branding", {})
+        
+        if not host:
+            raise HTTPException(status_code=400, detail="Host is required")
+        
+        # Parse subdomain from host
+        subdomain = host.split(":")[0].split(".")[0]
+        if not subdomain:
+            raise HTTPException(status_code=400, detail="Unable to determine subdomain from host")
+        
+        # Get tenant ID
+        tenant_id = await db_manager.get_tenant_id_by_subdomain(subdomain)
+        if not tenant_id:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        
+        # Update tenant branding
+        success = await db_manager.update_tenant_branding(tenant_id, branding)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update branding")
+        
+        return {"success": True, "message": "Branding updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating tenant branding: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 def _jwt_secret() -> str:
     secret = os.getenv("JWT_SIGNING_SECRET")
     if not secret:
