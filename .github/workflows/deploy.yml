@@ -51,14 +51,27 @@ jobs:
           # Login to registry
           doctl registry login --expiry-seconds 1200
           
-          # Pull latest image
-          docker pull registry.digitalocean.com/jon-school/api:latest
-          
-          # Stop existing container
+          # Force stop and remove existing container
+          echo "🛑 Stopping existing container..."
           docker stop speech-analyser-api || true
           docker rm speech-analyser-api || true
           
+          # Remove old image to force fresh pull
+          echo "🗑️ Removing old image..."
+          docker rmi registry.digitalocean.com/jon-school/api:latest || true
+          
+          # Pull latest image with force
+          echo "📥 Pulling latest image..."
+          docker pull registry.digitalocean.com/jon-school/api:latest --disable-content-trust
+          
+          # Verify no container with same name exists
+          if docker ps -a --filter "name=speech-analyser-api" --format "{{.Names}}" | grep -q "speech-analyser-api"; then
+            echo "⚠️ Container still exists, force removing..."
+            docker rm -f speech-analyser-api
+          fi
+          
           # Run new container
+          echo "🚀 Starting new container..."
           docker run -d \
             --name speech-analyser-api \
             --restart unless-stopped \
@@ -76,6 +89,29 @@ jobs:
             -e DEFAULT_TENANT_DB_PASSWORD="${{ secrets.DEFAULT_TENANT_DB_PASSWORD }}" \
             -e LOG_LEVEL="INFO" \
             registry.digitalocean.com/jon-school/api:latest
+          
+          # Verify container is running
+          echo "✅ Verifying deployment..."
+          sleep 5
+          if docker ps --filter "name=speech-analyser-api" --format "{{.Names}}" | grep -q "speech-analyser-api"; then
+            echo "✅ Container is running"
+            docker ps --filter "name=speech-analyser-api"
+          else
+            echo "❌ Container failed to start"
+            docker logs speech-analyser-api || true
+            exit 1
+          fi
+          
+          # Test health endpoint
+          echo "🏥 Testing health endpoint..."
+          sleep 10
+          if curl -f -s http://localhost:8000/healthz > /dev/null; then
+            echo "✅ Health check passed"
+          else
+            echo "❌ Health check failed"
+            docker logs speech-analyser-api
+            exit 1
+          fi
           
           # Clean up old images
           docker image prune -f
