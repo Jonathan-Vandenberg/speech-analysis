@@ -330,7 +330,9 @@ class DatabaseManager:
         try:
             target_sub = subdomain
             if not target_sub and host:
-                target_sub = host.split(":")[0].split(".")[0]
+                # Parse subdomain from host (everything before .speechanalyser.com)
+                host_without_port = host.split(":")[0]
+                target_sub = host_without_port.replace(".speechanalyser.com", "")
             if not target_sub:
                 return None
 
