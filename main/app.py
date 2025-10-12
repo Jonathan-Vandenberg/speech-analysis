@@ -180,8 +180,9 @@ async def update_tenant_branding(request: dict):
         if not host:
             raise HTTPException(status_code=400, detail="Host is required")
         
-        # Parse subdomain from host
-        subdomain = host.split(":")[0].split(".")[0]
+        # Parse subdomain from host (everything before .speechanalyser.com)
+        host_without_port = host.split(":")[0]
+        subdomain = host_without_port.replace(".speechanalyser.com", "")
         if not subdomain:
             raise HTTPException(status_code=400, detail="Unable to determine subdomain from host")
         
