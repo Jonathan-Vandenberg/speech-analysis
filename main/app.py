@@ -4,45 +4,6 @@ load_dotenv()
 
 import os
 import logging
-import logging.config
-
-# Custom filter to suppress health check logs
-class HealthCheckFilter(logging.Filter):
-    def filter(self, record):
-        # Filter out health check requests
-        return '/healthz' not in record.getMessage()
-
-# Configure logging with health check filter
-logging.config.dictConfig({
-    'version': 1,
-    'disable_existing_loggers': False,
-    'filters': {
-        'health_filter': {
-            '()': HealthCheckFilter,
-        },
-    },
-    'formatters': {
-        'default': {
-            'format': '%(levelname)s:%(name)s:%(message)s',
-        },
-    },
-    'handlers': {
-        'default': {
-            'level': 'INFO',
-            'class': 'logging.StreamHandler',
-            'formatter': 'default',
-            'filters': ['health_filter'],
-        },
-    },
-    'loggers': {
-        'uvicorn.access': {
-            'handlers': ['default'],
-            'level': 'INFO',
-            'propagate': False,
-        },
-    },
-})
-
 from fastapi import FastAPI, HTTPException, Depends, Form, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -219,9 +180,8 @@ async def update_tenant_branding(request: dict):
         if not host:
             raise HTTPException(status_code=400, detail="Host is required")
         
-        # Parse subdomain from host (everything before .speechanalyser.com)
-        host_without_port = host.split(":")[0]
-        subdomain = host_without_port.replace(".speechanalyser.com", "")
+        # Parse subdomain from host
+        subdomain = host.split(":")[0].split(".")[0]
         if not subdomain:
             raise HTTPException(status_code=400, detail="Unable to determine subdomain from host")
         

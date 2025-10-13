@@ -266,8 +266,8 @@ def align_and_score(expected_ipa: List[str], recognized_ipa: List[str]) -> tuple
     aligned_scores.reverse()
     align_pairs.reverse()
     
-    # Apply generous scoring boost for clearer speech assessment
-    # Add 8% bonus to all scores, then apply a gentle curve
+    # Apply scoring boost ONLY for genuine pronunciation attempts
+    # Do NOT boost when completely different words are spoken
     boosted_scores = []
     boosted_pairs = []
     
@@ -275,20 +275,26 @@ def align_and_score(expected_ipa: List[str], recognized_ipa: List[str]) -> tuple
         # Convert to percentage
         base_score = s * 100.0
         
-        # Ensure minimum score of 10-20% for any non-perfect match
-        if base_score < 5.0:  # Very low scores get random 10-20%
-            boosted = random_low_score()
+        # Check if this is a genuine pronunciation attempt vs completely wrong word
+        # If base score is very low (< 30%), likely wrong word - don't boost artificially
+        if base_score < 30.0:
+            # Very low scores indicate wrong words - keep them low
+            final_score = max(5.0, base_score)  # Minimum 5% for any sound match
+        elif base_score < 50.0:
+            # Low-medium scores - minimal boost for pronunciation effort
+            boosted = base_score + 2.0  # Small 2% bonus only
+            final_score = min(55.0, boosted)  # Cap low scores appropriately
         else:
-            # Add 8% flat bonus
-            boosted = base_score + 8.0
+            # Good scores - these are genuine pronunciation attempts, apply normal boost
+            boosted = base_score + 8.0  # 8% bonus for good attempts
             
             # Apply gentle curve to boost middle-range scores more
             if boosted > 50:
                 curve_bonus = min(4.0, (boosted - 50) * 0.08)  # Up to 4% extra for higher scores
                 boosted += curve_bonus
+            
+            final_score = min(99.0, boosted)  # Cap at 99%
         
-        # Cap at 99% to maintain realism, but ensure minimum 10%
-        final_score = float(np.clip(boosted, 10.0, 99.0))
         boosted_scores.append(final_score)
         
         # Update align_pairs with boosted scores
