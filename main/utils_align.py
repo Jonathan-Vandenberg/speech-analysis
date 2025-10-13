@@ -23,56 +23,53 @@ def _lazy_feature_table() -> panphon.FeatureTable:
     return _feature_table
 
 
-# Heuristic confusion similarities to soften near-matches (0..1 similarity)
+# Heuristic confusion similarities - STRICTER for pronunciation assessment
 # Higher values = more similar = lower distance = higher score
-# BOOSTED VALUES: +10-15% for more generous scoring while maintaining accuracy
+# Reduced values for more accurate pronunciation scoring
 CONFUSION_SIMILARITY: dict[tuple[str, str], float] = {
-    # Close vowel pairs (high similarity - boosted to 92-98% scores)
-    ("o", "ɔ"): 0.95, ("ʌ", "ə"): 0.92, ("ɒ", "ɑ"): 0.95,
-    ("a", "ɑ"): 0.95, ("i", "ɪ"): 0.94, ("e", "ɛ"): 0.93, ("ʊ", "u"): 0.91,
+    # Very close vowel pairs (high similarity)
+    ("ɒ", "ɑ"): 0.85, ("a", "ɑ"): 0.80, ("i", "ɪ"): 0.75, ("e", "ɛ"): 0.75, ("ʊ", "u"): 0.75,
     
-    # DIPHTHONG PARTIAL MATCHES - boosted for more generous scoring
-    # aɪ diphthong (my, I, high, time) - boosted partial credit
-    ("aɪ", "a"): 0.78, ("a", "aɪ"): 0.78,   # "a" is 78% of "aɪ" (was 65%)
-    ("aɪ", "ɪ"): 0.78, ("ɪ", "aɪ"): 0.78,   # "ɪ" is 78% of "aɪ" (was 65%)
-    ("aɪ", "æ"): 0.85, ("æ", "aɪ"): 0.85,   # close "a" sound (was 75%)
+    # DIPHTHONG PARTIAL MATCHES - reduced for stricter scoring
+    # aɪ diphthong (my, I, high, time) - reduced partial credit
+    ("aɪ", "a"): 0.45, ("a", "aɪ"): 0.45,   # "a" is 45% of "aɪ" (was 78%)
+    ("aɪ", "ɪ"): 0.45, ("ɪ", "aɪ"): 0.45,   # "ɪ" is 45% of "aɪ" (was 78%)
+    ("aɪ", "æ"): 0.55, ("æ", "aɪ"): 0.55,   # close "a" sound (was 85%)
     
-    # eɪ diphthong (name, day, great, say) - boosted partial credit
-    ("eɪ", "e"): 0.78, ("e", "eɪ"): 0.78,   # "e" is 78% of "eɪ" (was 65%)
-    ("eɪ", "ɪ"): 0.78, ("ɪ", "eɪ"): 0.78,   # "ɪ" is 78% of "eɪ" (was 65%)
-    ("eɪ", "ɛ"): 0.85, ("ɛ", "eɪ"): 0.85,   # close "e" sound (was 75%)
+    # eɪ diphthong (name, day, great, say) - reduced partial credit
+    ("eɪ", "e"): 0.45, ("e", "eɪ"): 0.45,   # "e" is 45% of "eɪ" (was 78%)
+    ("eɪ", "ɪ"): 0.45, ("ɪ", "eɪ"): 0.45,   # "ɪ" is 45% of "eɪ" (was 78%)
+    ("eɪ", "ɛ"): 0.55, ("ɛ", "eɪ"): 0.55,   # close "e" sound (was 85%)
     
-    # aʊ diphthong (now, house, out) - boosted partial credit
-    ("aʊ", "a"): 0.78, ("a", "aʊ"): 0.78,   # "a" is 78% of "aʊ" (was 65%)
-    ("aʊ", "ʊ"): 0.78, ("ʊ", "aʊ"): 0.78,   # "ʊ" is 78% of "aʊ" (was 65%)
-    ("aʊ", "æ"): 0.85, ("æ", "aʊ"): 0.85,   # close "a" sound (was 75%)
+    # aʊ diphthong (now, house, out) - reduced partial credit
+    ("aʊ", "a"): 0.45, ("a", "aʊ"): 0.45,   # "a" is 45% of "aʊ" (was 78%)
+    ("aʊ", "ʊ"): 0.45, ("ʊ", "aʊ"): 0.45,   # "ʊ" is 45% of "aʊ" (was 78%)
+    ("aʊ", "æ"): 0.55, ("æ", "aʊ"): 0.55,   # close "a" sound (was 85%)
     
-    # oʊ diphthong (go, show, no) - boosted partial credit  
-    ("oʊ", "o"): 0.78, ("o", "oʊ"): 0.78,   # "o" is 78% of "oʊ" (was 65%)
-    ("oʊ", "ʊ"): 0.78, ("ʊ", "oʊ"): 0.78,   # "ʊ" is 78% of "oʊ" (was 65%)
-    ("oʊ", "ɔ"): 0.85, ("ɔ", "oʊ"): 0.85,   # close "o" sound (was 75%)
+    # oʊ diphthong (go, show, no) - reduced partial credit  
+    ("oʊ", "o"): 0.45, ("o", "oʊ"): 0.45,   # "o" is 45% of "oʊ" (was 78%)
+    ("oʊ", "ʊ"): 0.45, ("ʊ", "oʊ"): 0.45,   # "ʊ" is 45% of "oʊ" (was 78%)
+    ("oʊ", "ɔ"): 0.55, ("ɔ", "oʊ"): 0.55,   # close "o" sound (was 85%)
     
-    # ɔɪ diphthong (boy, voice, choice) - boosted partial credit
-    ("ɔɪ", "ɔ"): 0.78, ("ɔ", "ɔɪ"): 0.78,   # "ɔ" is 78% of "ɔɪ" (was 65%)
-    ("ɔɪ", "ɪ"): 0.78, ("ɪ", "ɔɪ"): 0.78,   # "ɪ" is 78% of "ɔɪ" (was 65%)
+    # ɔɪ diphthong (boy, voice, choice) - reduced partial credit
+    ("ɔɪ", "ɔ"): 0.45, ("ɔ", "ɔɪ"): 0.45,   # "ɔ" is 45% of "ɔɪ" (was 78%)
+    ("ɔɪ", "ɪ"): 0.45, ("ɪ", "ɔɪ"): 0.45,   # "ɪ" is 45% of "ɔɪ" (was 78%)
     
-    # Medium similarity pairs (boosted to 90-95% scores)
-    ("æ", "ɛ"): 0.92, ("ɑ", "ʌ"): 0.91, ("o", "u"): 0.93, ("i", "e"): 0.90,
-    ("ɪ", "ɛ"): 0.88, ("ʊ", "ɔ"): 0.89, ("ə", "ɪ"): 0.87,
+    # Medium similarity pairs - reduced
+    ("æ", "ɛ"): 0.65, ("ɑ", "ʌ"): 0.60, ("o", "u"): 0.70, ("i", "e"): 0.60,
+    ("ɪ", "ɛ"): 0.55, ("ʊ", "ɔ"): 0.60, ("ə", "ɪ"): 0.50,
     
-    # Common vowel confusions (boosted to 85-95% scores)
-    ("u", "ʊ"): 0.95, ("u", "o"): 0.92, ("ɔ", "o"): 0.95, ("ɔ", "ɑ"): 0.90,
-    ("ɔ", "ʌ"): 0.87, ("j", "ɪ"): 0.84, ("j", "i"): 0.86, ("u", "ə"): 0.82,
+    # Consonant similarities - more conservative
+    ("j", "i"): 0.50, ("r", "ɹ"): 0.85, ("n", "ɴ"): 0.80,
+    ("ʃ", "ɕ"): 0.75, ("tʃ", "tɕ"): 0.75, ("dʒ", "dʑ"): 0.75,
+    ("h", "x"): 0.50, ("θ", "ð"): 0.40,  # Very different sounds
+    ("f", "θ"): 0.35, ("v", "ð"): 0.35,  # Different articulation
+    ("p", "b"): 0.60, ("t", "d"): 0.65, ("k", "ɡ"): 0.60,
+    ("s", "z"): 0.70, ("ʃ", "ʒ"): 0.75, ("m", "n"): 0.55,
     
-    # Consonant similarities (boosted to 85-95% scores)
-    ("j", "i"): 0.86, ("r", "ɹ"): 0.95, ("n", "ɴ"): 0.94,
-    ("ʃ", "ɕ"): 0.93, ("tʃ", "tɕ"): 0.94, ("dʒ", "dʑ"): 0.94,
-    ("h", "x"): 0.84, ("θ", "ð"): 0.82, ("f", "θ"): 0.85, ("v", "ð"): 0.83,
-    ("p", "b"): 0.90, ("t", "d"): 0.92, ("k", "ɡ"): 0.91,
-    ("s", "z"): 0.93, ("ʃ", "ʒ"): 0.94, ("m", "n"): 0.88,
-    
-    # Lower similarity pairs (boosted to 80-85% scores)
-    ("l", "r"): 0.81, ("w", "v"): 0.83, ("j", "dʒ"): 0.80,
+    # Very different consonants - much lower scores
+    ("w", "h"): 0.15,  # /w/ vs /h/ are very different (was not mapped)
+    ("l", "r"): 0.40, ("w", "v"): 0.35, ("j", "dʒ"): 0.25,
 }
 
 
@@ -80,6 +77,10 @@ _distance_cache: dict[tuple[str, str], float] = {}
 
 
 def ipa_feature_distance(p1: str, p2: str) -> float:
+    # Clear cache for testing - remove this line in production
+    global _distance_cache
+    _distance_cache = {}  # Clear cache to test new distance calculation
+    
     key = (p1, p2)
     if key in _distance_cache:
         return _distance_cache[key]
@@ -167,7 +168,44 @@ def ipa_feature_distance(p1: str, p2: str) -> float:
             return 1.0
             
         cos_sim = float(np.dot(v1, v2) / denom)
-        val = float(1.0 - (cos_sim + 1.0) / 2.0)
+        # Original calculation: val = float(1.0 - (cos_sim + 1.0) / 2.0)
+        # This was too generous - apply much stricter distance calculation
+        
+        # Transform cosine similarity to distance with stricter thresholds
+        # cosine similarity ranges from -1 to 1
+        normalized_sim = (cos_sim + 1.0) / 2.0  # Now 0 to 1
+        original_distance = 1.0 - normalized_sim  # What the old calculation would give
+        
+        # Apply exponential penalty to make scoring much stricter
+        # For pronunciation, completely different phonemes should get near-zero scores
+        if normalized_sim < 0.4:  # Completely different phonemes - annihilate them  
+            # Apply devastating penalty - these should be 5-10%
+            strict_distance = 1.0 - (normalized_sim ** 8.0)  # Devastating penalty
+            penalty_type = "DEVASTATING"
+        elif normalized_sim < 0.6:  # Very different phonemes - crush them
+            # Apply brutal penalty - these should be near zero
+            strict_distance = 1.0 - (normalized_sim ** 6.0)  # Extremely aggressive penalty
+            penalty_type = "BRUTAL"
+        elif normalized_sim < 0.75:  # Different phonemes - severe penalty
+            # Apply severe penalty
+            strict_distance = 1.0 - (normalized_sim ** 4.0)  # Very aggressive penalty
+            penalty_type = "SEVERE"
+        elif normalized_sim < 0.9:  # Moderately different - moderate penalty
+            # Apply moderate penalty
+            strict_distance = 1.0 - (normalized_sim ** 2.0)  # Moderate reduction
+            penalty_type = "MODERATE"  
+        else:  # Similar phonemes - keep normal
+            strict_distance = 1.0 - normalized_sim
+            penalty_type = "NONE"
+        
+        val = min(1.0, strict_distance)  # Ensure we don't exceed 1.0
+        
+        # Log the distance calculation for analysis
+        if logger.isEnabledFor(logging.DEBUG):
+            old_similarity = (1.0 - original_distance) * 100
+            new_similarity = (1.0 - val) * 100
+            logger.debug(f"  📏 Distance '{p1}' vs '{p2}': {old_similarity:.1f}% → {new_similarity:.1f}% (penalty: {penalty_type})")
+        
         _distance_cache[key] = val
         return val
         
@@ -211,90 +249,147 @@ def normalize_unknown_phoneme(phoneme: str) -> str:
 
 
 def align_and_score(expected_ipa: List[str], recognized_ipa: List[str]) -> tuple[List[float], List[tuple[Optional[str], Optional[str], Optional[float]]]]:
+    """Align and score phonemes with detailed logging."""
+    # Temporarily set logging to DEBUG for detailed analysis
+    original_level = logger.level
+    logger.setLevel(logging.DEBUG)
+    
+    logger.debug(f"🔧 ALIGNMENT INPUT:")
+    logger.debug(f"  Expected: {expected_ipa} ({len(expected_ipa)} phonemes)")
+    logger.debug(f"  Recognized: {recognized_ipa} ({len(recognized_ipa)} phonemes)")
+    
     # Needleman–Wunsch with feature-based substitution cost mapped to [0,1]
     gap_penalty = 0.9
     n = len(expected_ipa)
     m = len(recognized_ipa)
     if n == 0:
+        logger.debug("  ⚠️ No expected phonemes, returning empty alignment")
         return [], []
 
     score = np.zeros((n + 1, m + 1), dtype=float)
     ptr = np.zeros((n + 1, m + 1), dtype=int)
+    
+    # Initialize scoring matrix
     for i in range(1, n + 1):
         score[i, 0] = score[i - 1, 0] - gap_penalty
         ptr[i, 0] = 1
     for j in range(1, m + 1):
         score[0, j] = score[0, j - 1] - gap_penalty
         ptr[0, j] = 2
+    
+    # Fill scoring matrix with detailed logging for small alignments
+    logger.debug(f"🔬 ALIGNMENT MATRIX CALCULATION:")
     for i in range(1, n + 1):
         for j in range(1, m + 1):
-            sub_cost = 1.0 - (1.0 - ipa_feature_distance(expected_ipa[i - 1], recognized_ipa[j - 1]))
+            expected_ph = expected_ipa[i - 1]
+            recognized_ph = recognized_ipa[j - 1]
+            
+            # Get phoneme distance
+            distance = ipa_feature_distance(expected_ph, recognized_ph)
+            sub_cost = 1.0 - (1.0 - distance)
+            
             match_score = score[i - 1, j - 1] - sub_cost
             delete_score = score[i - 1, j] - gap_penalty
             insert_score = score[i, j - 1] - gap_penalty
             best = max(match_score, delete_score, insert_score)
+            
             score[i, j] = best
             ptr[i, j] = 0 if best == match_score else (1 if best == delete_score else 2)
+            
+            # Log details for small matrices (< 6 phonemes each)
+            if n <= 6 and m <= 6:
+                similarity_pct = (1.0 - distance) * 100
+                operation = "MATCH" if best == match_score else ("DELETE" if best == delete_score else "INSERT")
+                logger.debug(f"    [{i},{j}] '{expected_ph}' vs '{recognized_ph}': distance={distance:.3f}, similarity={similarity_pct:.1f}%, operation={operation}")
 
+    # Traceback to get alignment
     i, j = n, m
     aligned_scores: List[float] = []
     align_pairs: List[tuple[Optional[str], Optional[str], Optional[float]]] = []
+    
+    logger.debug(f"🔄 TRACEBACK PROCESS:")
+    step = 0
     while i > 0 and j > 0:
+        step += 1
         dir_ = ptr[i, j]
-        if dir_ == 0:
-            dist = ipa_feature_distance(expected_ipa[i - 1], recognized_ipa[j - 1])
+        if dir_ == 0:  # Match/substitution
+            expected_ph = expected_ipa[i - 1]
+            recognized_ph = recognized_ipa[j - 1]
+            dist = ipa_feature_distance(expected_ph, recognized_ph)
             sc01 = 1.0 - dist
             aligned_scores.append(sc01)
-            align_pairs.append((expected_ipa[i - 1], recognized_ipa[j - 1], sc01 * 100.0))
+            align_pairs.append((expected_ph, recognized_ph, sc01 * 100.0))
+            logger.debug(f"  Step {step}: MATCH '{expected_ph}' ↔ '{recognized_ph}' (similarity: {sc01*100:.1f}%)")
             i -= 1; j -= 1
-        elif dir_ == 1:
-            # Deletion: expected phoneme not found - use encouraging low score instead of harsh 0
+        elif dir_ == 1:  # Deletion
+            expected_ph = expected_ipa[i - 1]
             low_score = random_low_score()
-            aligned_scores.append(low_score / 100.0)  # Convert to 0-1 range for internal scoring
-            align_pairs.append((expected_ipa[i - 1], "∅", low_score))
+            aligned_scores.append(low_score / 100.0)
+            align_pairs.append((expected_ph, "∅", low_score))
+            logger.debug(f"  Step {step}: DELETE '{expected_ph}' (not said, score: {low_score:.1f}%)")
             i -= 1
-        else:
-            align_pairs.append(("∅", recognized_ipa[j - 1], None))
+        else:  # Insertion
+            recognized_ph = recognized_ipa[j - 1]
+            align_pairs.append(("∅", recognized_ph, None))
+            logger.debug(f"  Step {step}: INSERT '{recognized_ph}' (extra phoneme said)")
             j -= 1
+    
+    # Handle remaining expected phonemes (deletions)
     while i > 0:
-        # Remaining expected phonemes not found - use encouraging low score instead of harsh 0
+        step += 1
+        expected_ph = expected_ipa[i - 1]
         low_score = random_low_score()
-        aligned_scores.append(low_score / 100.0)  # Convert to 0-1 range for internal scoring
-        align_pairs.append((expected_ipa[i - 1], "∅", low_score))
+        aligned_scores.append(low_score / 100.0)
+        align_pairs.append((expected_ph, "∅", low_score))
+        logger.debug(f"  Step {step}: DELETE '{expected_ph}' (remaining expected, score: {low_score:.1f}%)")
         i -= 1
 
     aligned_scores.reverse()
     align_pairs.reverse()
     
-    # Apply scoring boost ONLY for genuine pronunciation attempts
-    # Do NOT boost when completely different words are spoken
+    logger.debug(f"📋 RAW ALIGNMENT RESULTS:")
+    for i, (exp, rec, score) in enumerate(align_pairs):
+        logger.debug(f"  {i+1}. '{exp}' vs '{rec}' = {score}%")
+    
+    # Apply strict scoring for pronunciation accuracy assessment
+    # Completely different phonemes should get very low scores
     boosted_scores = []
     boosted_pairs = []
+    
+    logger.debug(f"⚡ SCORE BOOSTING PROCESS:")
     
     for i, s in enumerate(aligned_scores):
         # Convert to percentage
         base_score = s * 100.0
         
-        # Check if this is a genuine pronunciation attempt vs completely wrong word
-        # If base score is very low (< 30%), likely wrong word - don't boost artificially
-        if base_score < 30.0:
-            # Very low scores indicate wrong words - keep them low
-            final_score = max(5.0, base_score)  # Minimum 5% for any sound match
-        elif base_score < 50.0:
-            # Low-medium scores - minimal boost for pronunciation effort
-            boosted = base_score + 2.0  # Small 2% bonus only
-            final_score = min(55.0, boosted)  # Cap low scores appropriately
-        else:
-            # Good scores - these are genuine pronunciation attempts, apply normal boost
-            boosted = base_score + 8.0  # 8% bonus for good attempts
-            
-            # Apply gentle curve to boost middle-range scores more
-            if boosted > 50:
-                curve_bonus = min(4.0, (boosted - 50) * 0.08)  # Up to 4% extra for higher scores
-                boosted += curve_bonus
-            
-            final_score = min(99.0, boosted)  # Cap at 99%
+        logger.debug(f"  Phoneme {i+1}: base_score = {base_score:.1f}%")
         
+        # Absolutely ruthless scoring for pronunciation assessment
+        # Wrong phonemes should get single-digit scores, period.
+        if base_score < 10.0:  # Completely wrong - NO boost whatsoever
+            final_score = max(5.0, base_score)  # Keep it brutal, minimum 5%
+            logger.debug(f"    → DEVASTATING (< 10%): {base_score:.1f}% → {final_score:.1f}% (NO BOOST)")
+        elif base_score < 20.0:  # Very wrong - tiny boost only
+            final_score = base_score + 0.5  # Almost no boost
+            logger.debug(f"    → BRUTAL (< 20%): {base_score:.1f}% + 0.5% = {final_score:.1f}%")
+        elif base_score < 35.0:  # Wrong - very small boost
+            final_score = base_score + 1.0  # Tiny boost
+            logger.debug(f"    → VERY WRONG (< 35%): {base_score:.1f}% + 1% = {final_score:.1f}%")
+        elif base_score < 50.0:  # Somewhat different - small boost
+            final_score = base_score + 2.0
+            logger.debug(f"    → WRONG (< 50%): {base_score:.1f}% + 2% = {final_score:.1f}%")
+        elif base_score < 70.0:  # Medium - normal boost
+            final_score = base_score + 5.0
+            logger.debug(f"    → MEDIUM (< 70%): {base_score:.1f}% + 5% = {final_score:.1f}%")
+        elif base_score < 85.0:  # Good - larger boost
+            final_score = base_score + 8.0
+            logger.debug(f"    → GOOD (< 85%): {base_score:.1f}% + 8% = {final_score:.1f}%")
+        else:  # Excellent - maximum boost
+            final_score = min(99.0, base_score + 10.0)
+            logger.debug(f"    → EXCELLENT (≥ 85%): {base_score:.1f}% + 10% = {final_score:.1f}%")
+        
+        # Ensure minimum is very low for bad matches
+        final_score = max(5.0, min(99.0, final_score))
         boosted_scores.append(final_score)
         
         # Update align_pairs with boosted scores
@@ -302,19 +397,31 @@ def align_and_score(expected_ipa: List[str], recognized_ipa: List[str]) -> tuple
             expected, recognized, original_score = align_pairs[i]
             if expected not in (None, "∅") and recognized not in (None, "∅"):
                 boosted_pairs.append((expected, recognized, final_score))
+                logger.debug(f"    → FINAL PAIR: '{expected}' vs '{recognized}' = {final_score:.1f}%")
             elif recognized == "∅":
                 # Deletion: use the already-random low score (10-20%) with slight boost
                 deletion_score = min(25.0, original_score + 3.0) if original_score else random_low_score()
                 boosted_pairs.append((expected, recognized, deletion_score))
+                logger.debug(f"    → DELETION: '{expected}' (not said) = {deletion_score:.1f}%")
             else:
                 # Insertion: keep as None (extra recognized phoneme)
                 boosted_pairs.append((expected, recognized, None))
+                logger.debug(f"    → INSERTION: '{recognized}' (extra phoneme)")
         else:
             boosted_pairs.append(align_pairs[i])
-    
+
     # Handle any remaining pairs
     while len(boosted_pairs) < len(align_pairs):
         boosted_pairs.append(align_pairs[len(boosted_pairs)])
+
+    logger.debug(f"🏁 FINAL BOOSTED RESULTS:")
+    logger.debug(f"  Scores: {[f'{s:.1f}%' for s in boosted_scores]}")
+    logger.debug(f"  Average: {sum(boosted_scores) / len(boosted_scores):.1f}%" if boosted_scores else "  No scores")
+    for i, (exp, rec, score) in enumerate(boosted_pairs):
+        logger.debug(f"  {i+1}. '{exp}' vs '{rec}' = {score}%")
+
+    # Restore original logging level
+    logger.setLevel(original_level)
     
     return boosted_scores, boosted_pairs
 

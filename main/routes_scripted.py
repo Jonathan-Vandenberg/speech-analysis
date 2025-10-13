@@ -6,6 +6,7 @@ import soundfile as sf
 import io
 import tempfile
 import subprocess
+import torch
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Depends, Request
 
 logger = logging.getLogger("speech_analyzer")
@@ -309,44 +310,85 @@ async def pronunciation(
             logger.info(f"🎯 Expected words: {expected_words}")
             logger.info(f"🎤 Actual words: {actual_words}")
             
-            # Build pronunciation result with simple word matching
+            # Build pronunciation result with phoneme-level analysis
             out_words: List[WordPronunciation] = []
             
-            for i, expected_word in enumerate(expected_words):
-                word_text = expected_word
+            # Get expected phonemes for proper analysis
+            exp_words_for_display = tokenize_words(expected_text)
+            exp_ipas_words = phonemize_words_en(" ".join(exp_words_for_display))
+            
+            # Get actual phonemes from what was said
+            actual_words_clean = [w.strip() for w in tokenize_words(actual_text)]
+            actual_ipas_words = phonemize_words_en(" ".join(actual_words_clean))
+            
+            logger.info(f"🎯 Expected words: {exp_words_for_display}")
+            logger.info(f"🎤 Actual words: {actual_words_clean}")
+            
+            # Align and compare word by word
+            max_words = max(len(exp_words_for_display), len(actual_words_clean))
+            
+            for i in range(len(exp_words_for_display)):
+                word_text = exp_words_for_display[i]
+                expected_ipas = normalize_ipa(exp_ipas_words[i]) if i < len(exp_ipas_words) else []
                 
-                # Check if this word was said correctly
-                if i < len(actual_words):
-                    actual_word = actual_words[i]
+                if i < len(actual_words_clean):
+                    actual_word = actual_words_clean[i]
+                    actual_ipas = normalize_ipa(actual_ipas_words[i]) if i < len(actual_ipas_words) else []
                     
-                    # Exact match = excellent score
-                    if expected_word == actual_word:
-                        word_score = 95.0
-                        phonemes = [PhonemeScore(ipa_label="✓", phoneme_score=95.0)]
-                        logger.info(f"✅ Word match: '{expected_word}' = '{actual_word}' (95%)")
+                    logger.info(f"🔍 Analyzing '{word_text}' vs '{actual_word}'")
+                    logger.info(f"  Expected phonemes: {expected_ipas}")
+                    logger.info(f"  Actual phonemes: {actual_ipas}")
                     
-                    # Similar word (edit distance) = medium score  
-                    elif len(expected_word) > 2 and len(actual_word) > 2:
-                        # Calculate similarity using edit distance
-                        import difflib
-                        similarity = difflib.SequenceMatcher(None, expected_word, actual_word).ratio()
-                        if similarity > 0.7:  # 70% similar
-                            word_score = 60.0 + (similarity * 30.0)  # 60-90% range
-                            phonemes = [PhonemeScore(ipa_label="~", phoneme_score=word_score)]
-                            logger.info(f"📊 Similar word: '{expected_word}' ≈ '{actual_word}' ({word_score:.1f}%)")
-                        else:
-                            word_score = 15.0  # Very different words
-                            phonemes = [PhonemeScore(ipa_label="✗", phoneme_score=15.0)]
-                            logger.info(f"❌ Different word: '{expected_word}' ≠ '{actual_word}' (15%)")
+                    # Do phoneme-level alignment and scoring
+                    if expected_ipas and actual_ipas:
+                        logger.info(f"🔬 DETAILED PHONEME ANALYSIS:")
+                        logger.info(f"  Expected: {word_text} → {expected_ipas}")
+                        logger.info(f"  Actual: {actual_word} → {actual_ipas}")
+                        
+                        scores, pairs = align_and_score(expected_ipas, actual_ipas)
+                        
+                        logger.info(f"  📊 Alignment results ({len(pairs)} pairs):")
+                        phonemes: List[PhonemeScore] = []
+                        
+                        for idx, (expected_ph, actual_ph, score) in enumerate(pairs):
+                            logger.info(f"    Pair {idx+1}: '{expected_ph}' vs '{actual_ph}' = {score}%")
+                            
+                            if expected_ph not in (None, "∅"):
+                                final_score = float(score) if score is not None else 5.0
+                                phonemes.append(PhonemeScore(
+                                    ipa_label=expected_ph, 
+                                    phoneme_score=final_score
+                                ))
+                                
+                                # Log the reasoning for this score
+                                if actual_ph in (None, "∅"):
+                                    logger.info(f"      → DELETION: Expected '{expected_ph}' but not said = {final_score:.1f}%")
+                                elif score is None:
+                                    logger.info(f"      → NULL SCORE: Something went wrong = {final_score:.1f}%")
+                                else:
+                                    logger.info(f"      → MATCH: '{expected_ph}' aligned with '{actual_ph}' = {final_score:.1f}%")
+                        
+                        # Log the individual phoneme scores
+                        phoneme_scores = [p.phoneme_score for p in phonemes]
+                        logger.info(f"  🎯 Individual phoneme scores: {[f'{p:.1f}' for p in phoneme_scores]}")
+                        
+                        word_score = float(np.mean(phoneme_scores)) if phoneme_scores else 5.0
+                        logger.info(f"  📈 Final word score: {word_score:.1f}% (average of {len(phoneme_scores)} phonemes)")
+                        
                     else:
-                        word_score = 10.0  # Short words that don't match
-                        phonemes = [PhonemeScore(ipa_label="✗", phoneme_score=10.0)]
-                        logger.info(f"❌ Word mismatch: '{expected_word}' ≠ '{actual_word}' (10%)")
+                        # Fallback if phonemization failed
+                        word_score = 50.0 if actual_word.lower() == word_text.lower() else 10.0
+                        phonemes = [PhonemeScore(ipa_label=ph, phoneme_score=word_score) for ph in expected_ipas]
+                        logger.info(f"  ⚠️ FALLBACK: Phonemization failed, using word match = {word_score:.1f}%")
                 else:
                     # Word not said at all
                     word_score = 5.0
-                    phonemes = [PhonemeScore(ipa_label="∅", phoneme_score=5.0)]
-                    logger.info(f"❌ Missing word: '{expected_word}' (5%)")
+                    phonemes = [PhonemeScore(ipa_label=ph, phoneme_score=5.0) for ph in expected_ipas]
+                    logger.info(f"❌ Missing word: '{word_text}' (5%)")
+                
+                # Fallback if no phonemes available
+                if not phonemes:
+                    phonemes = [PhonemeScore(ipa_label="?", phoneme_score=word_score)]
                 
                 out_words.append(WordPronunciation(
                     word_text=word_text,
