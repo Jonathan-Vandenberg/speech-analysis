@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routes_scripted import router as scripted_router
 from .routes_unscripted import router as unscripted_router
+from .routes_transcribe import router as transcribe_router
 from .database import db_manager
 from .middleware import api_key_bearer, APIKeyInfo
 from .schemas import (
@@ -102,6 +103,7 @@ app.add_middleware(
 # Include routers with API key authentication
 app.include_router(scripted_router, prefix="/analyze", dependencies=[Depends(api_key_bearer)])
 app.include_router(unscripted_router, prefix="/analyze", dependencies=[Depends(api_key_bearer)])
+app.include_router(transcribe_router, prefix="/analyze", dependencies=[Depends(api_key_bearer)])
 
 
 logger = logging.getLogger("speech_analyzer")
