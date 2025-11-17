@@ -88,6 +88,10 @@ jobs:
             -e SCHOOL_SQL_PATH="/app/prisma/tenant_schema.sql" \
             -e DEFAULT_TENANT_DB_PASSWORD="${{ secrets.DEFAULT_TENANT_DB_PASSWORD }}" \
             -e LOG_LEVEL="INFO" \
+            -e AWS_REGION="${{ secrets.AWS_REGION }}" \
+            -e AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            -e AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            -e S3_BUCKET_NAME="${{ secrets.S3_BUCKET_NAME }}" \
             registry.digitalocean.com/jon-school/api:latest
           
           # Verify container is running
