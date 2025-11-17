@@ -1,0 +1,125 @@
+{
+  "pronunciation": {
+    "words": [
+      {
+        "word_text": "The",
+        "phonemes": [
+          {
+            "ipa_label": "\u00f0",
+            "phoneme_score": 0.12504708720371127
+          },
+          {
+            "ipa_label": "\u0259",
+            "phoneme_score": 1.7798091762866695e-12
+          }
+        ],
+        "word_score": 0.06252354360274553
+      },
+      {
+        "word_text": "bus",
+        "phonemes": [
+          {
+            "ipa_label": "b",
+            "phoneme_score": 7.902509224777532e-06
+          },
+          {
+            "ipa_label": "\u028c",
+            "phoneme_score": 0.06640409119427204
+          },
+          {
+            "ipa_label": "s",
+            "phoneme_score": 2.6966815814375877
+          }
+        ],
+        "word_score": 0.9210311917136949
+      },
+      {
+        "word_text": "arrives",
+        "phonemes": [
+          {
+            "ipa_label": "\u025a",
+            "phoneme_score": 0.052040209993720055
+          },
+          {
+            "ipa_label": "\u0279",
+            "phoneme_score": 0.0977124203927815
+          },
+          {
+            "ipa_label": "a\u026a",
+            "phoneme_score": 1.1515709571540356
+          },
+          {
+            "ipa_label": "v",
+            "phoneme_score": 0.26282770559191704
+          },
+          {
+            "ipa_label": "z",
+            "phoneme_score": 0.12740128440782428
+          }
+        ],
+        "word_score": 0.3383105155080557
+      },
+      {
+        "word_text": "before",
+        "phonemes": [
+          {
+            "ipa_label": "b",
+            "phoneme_score": 1.6907764598727226
+          },
+          {
+            "ipa_label": "\u026a",
+            "phoneme_score": 1.0345292277634144
+          },
+          {
+            "ipa_label": "f",
+            "phoneme_score": 0.2170502208173275
+          },
+          {
+            "ipa_label": "\u0254",
+            "phoneme_score": 0.348635227419436
+          },
+          {
+            "ipa_label": "\u0279",
+            "phoneme_score": 2.6526950299739838
+          }
+        ],
+        "word_score": 1.1887372331693769
+      },
+      {
+        "word_text": "the",
+        "phonemes": [
+          {
+            "ipa_label": "\u00f0",
+            "phoneme_score": 33.94906520843506
+          },
+          {
+            "ipa_label": "\u0259",
+            "phoneme_score": 1.653929054737091
+          }
+        ],
+        "word_score": 17.801497131586075
+      },
+      {
+        "word_text": "class",
+        "phonemes": [
+          {
+            "ipa_label": "k",
+            "phoneme_score": 2.0112572237849236
+          }
+        ],
+        "word_score": 2.0112572237849236
+      },
+      {
+        "word_text": "begins",
+        "phonemes": [],
+        "word_score": 0.0
+      }
+    ],
+    "overall_score": 3.189050977052124
+  },
+  "predicted_text": "The bus arrives before the class begins",
+  "metrics": null,
+  "grammar": null,
+  "relevance": null,
+  "ielts_score": null
+}

@@ -4,6 +4,7 @@ API Key authentication middleware for the speech analysis API.
 import time
 import hashlib
 import logging
+from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -52,7 +53,21 @@ class APIKeyBearer(HTTPBearer):
         if not db_manager.is_available():
             # If database is not available, allow requests (for development)
             logger.warning("Database not available - allowing request without API key validation")
-            return None
+            return APIKeyInfo(
+                id="dev-bypass",
+                description="Development bypass key",
+                is_active=True,
+                usage_count=0,
+                minute_usage=0,
+                daily_usage=0,
+                monthly_usage=0,
+                minute_limit=10**9,
+                daily_limit=10**9,
+                monthly_limit=10**9,
+                last_used_at=None,
+                created_at=datetime.utcnow(),  # type: ignore[arg-type]
+                tenant_id=None,
+            )
         
         try:
             # Accept either Bearer sk-... API keys or JWT tenant tokens

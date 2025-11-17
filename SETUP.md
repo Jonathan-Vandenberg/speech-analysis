@@ -25,6 +25,16 @@ WHISPER_MODEL=small
 WHISPER_COMPUTE_TYPE=auto
 WHISPER_BEAM_SIZE=1
 
+# Pronunciation reference storage (S3 preferred; Supabase bucket is fallback)
+AWS_REGION=ap-southeast-1
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+S3_BUCKET_NAME=student-ai
+PRONUNCIATION_REFERENCE_PREFIX=pronunciation-references
+S3_PUBLIC_BASE_URL=https://student-ai.s3.ap-southeast-1.amazonaws.com
+# Optional: legacy Supabase bucket name if you still want DB storage fallback
+PRONUNCIATION_REFERENCE_BUCKET=pronunciation-references
+
 # Control Plane Encryption (for multi-tenant credentials)
 # Option A: Provide a Fernet key directly (recommended for production)
 # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -33,6 +43,8 @@ CP_ENCRYPTION_KEY="Da7IUuveopBqr6bkNCRfeAFi8NpJ2gPsy3m7baO1UPM="
 # CP_ENCRYPTION_PASSPHRASE=
 # CP_ENCRYPTION_SALT=
 ```
+
+When `S3_BUCKET_NAME` (and AWS credentials) are provided, reference audio/IPA artifacts for pronunciation assignments are uploaded to that bucket under the configured prefix. If those variables are missing, the service falls back to uploading into the Supabase storage bucket defined by `PRONUNCIATION_REFERENCE_BUCKET`.
 
 ## Database Setup
 

@@ -1,0 +1,238 @@
+{
+  "pronunciation": {
+    "words": [
+      {
+        "word_text": "Peter",
+        "phonemes": [
+          {
+            "ipa_label": "p",
+            "phoneme_score": 86.27681978214065
+          },
+          {
+            "ipa_label": "i",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "r",
+            "phoneme_score": 28.416407864998725
+          },
+          {
+            "ipa_label": "\u025a",
+            "phoneme_score": 99.0
+          }
+        ],
+        "word_score": 78.17330691178483
+      },
+      {
+        "word_text": "Piper",
+        "phonemes": [
+          {
+            "ipa_label": "p",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "a\u026a",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "j",
+            "phoneme_score": 0.0
+          },
+          {
+            "ipa_label": "p",
+            "phoneme_score": 31.138370447518923
+          },
+          {
+            "ipa_label": "\u025a",
+            "phoneme_score": 99.0
+          }
+        ],
+        "word_score": 65.62767408950378
+      },
+      {
+        "word_text": "picked",
+        "phonemes": [
+          {
+            "ipa_label": "p",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "\u026a",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "k",
+            "phoneme_score": 10.527855832621242
+          },
+          {
+            "ipa_label": "t",
+            "phoneme_score": 13.027855832621242
+          }
+        ],
+        "word_score": 55.38892791631062
+      },
+      {
+        "word_text": "peppers",
+        "phonemes": [
+          {
+            "ipa_label": "p",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "\u025b",
+            "phoneme_score": 86.27681978214065
+          },
+          {
+            "ipa_label": "p",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "\u025a",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "z",
+            "phoneme_score": 99.0
+          }
+        ],
+        "word_score": 96.45536395642813
+      },
+      {
+        "word_text": "Three",
+        "phonemes": [
+          {
+            "ipa_label": "\u03b8",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "r",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "i",
+            "phoneme_score": 99.0
+          }
+        ],
+        "word_score": 99.0
+      },
+      {
+        "word_text": "thick",
+        "phonemes": [
+          {
+            "ipa_label": "\u03b8",
+            "phoneme_score": 46.99999999999999
+          },
+          {
+            "ipa_label": "\u026a",
+            "phoneme_score": 30.477981292347355
+          },
+          {
+            "ipa_label": "k",
+            "phoneme_score": 99.0
+          }
+        ],
+        "word_score": 58.825993764115786
+      },
+      {
+        "word_text": "trees",
+        "phonemes": [
+          {
+            "ipa_label": "t",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "r",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "i",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "z",
+            "phoneme_score": 99.0
+          }
+        ],
+        "word_score": 99.0
+      },
+      {
+        "word_text": "She",
+        "phonemes": [
+          {
+            "ipa_label": "\u0283",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "i",
+            "phoneme_score": 99.0
+          }
+        ],
+        "word_score": 99.0
+      },
+      {
+        "word_text": "sells",
+        "phonemes": [
+          {
+            "ipa_label": "s",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "\u025b",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "l",
+            "phoneme_score": 17.430925359605418
+          },
+          {
+            "ipa_label": "z",
+            "phoneme_score": 19.930925359605418
+          }
+        ],
+        "word_score": 58.84046267980271
+      },
+      {
+        "word_text": "sea",
+        "phonemes": [
+          {
+            "ipa_label": "s",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "i",
+            "phoneme_score": 99.0
+          }
+        ],
+        "word_score": 99.0
+      },
+      {
+        "word_text": "shells",
+        "phonemes": [
+          {
+            "ipa_label": "\u0283",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "\u025b",
+            "phoneme_score": 99.0
+          },
+          {
+            "ipa_label": "l",
+            "phoneme_score": 78.0
+          },
+          {
+            "ipa_label": "z",
+            "phoneme_score": 70.0
+          }
+        ],
+        "word_score": 86.5
+      }
+    ],
+    "overall_score": 81.43742993799508
+  },
+  "predicted_text": "Peter Piper picked peppers, three thick trees, she sells seashells.",
+  "metrics": null,
+  "grammar": null,
+  "relevance": null,
+  "ielts_score": null
+}

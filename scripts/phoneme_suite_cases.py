@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from typing import List, Dict
+
+TEST_CASES: List[Dict[str, str]] = [
+    {"slug": "vowel_i", "expected_text": "Pete beat seat leak.", "description": "/i/ FLEECE"},
+    {"slug": "vowel_ih", "expected_text": "Pick bit sip gym.", "description": "/ɪ/ KIT"},
+    {"slug": "vowel_ei", "expected_text": "Pay bake made late.", "description": "/eɪ/ FACE"},
+    {"slug": "vowel_eh", "expected_text": "Peg bet said best.", "description": "/ɛ/ DRESS"},
+    {"slug": "vowel_ae", "expected_text": "Pat bad sack laugh.", "description": "/æ/ TRAP"},
+    {"slug": "vowel_ah", "expected_text": "Palm father saga pasta.", "description": "/ɑ/ PALM"},
+    {"slug": "vowel_aw", "expected_text": "Caught dawn law talk.", "description": "/ɔ/ THOUGHT"},
+    {"slug": "vowel_ou", "expected_text": "Boat coat road low.", "description": "/oʊ/ GOAT"},
+    {"slug": "vowel_uh", "expected_text": "Book put cook good.", "description": "/ʊ/ FOOT"},
+    {"slug": "vowel_u", "expected_text": "Boot food blue noon.", "description": "/u/ GOOSE"},
+    {"slug": "vowel_strut", "expected_text": "Sun cup luck rough.", "description": "/ʌ/ STRUT"},
+    {"slug": "vowel_schwa", "expected_text": "Alone sofa again around.", "description": "/ə/ schwa"},
+    {"slug": "vowel_er", "expected_text": "Bird learn nurse work.", "description": "/ɝ/ NURSE"},
+    {"slug": "diphthong_ai", "expected_text": "Buy high bright time.", "description": "/aɪ/ PRICE"},
+    {"slug": "diphthong_au", "expected_text": "Cow loud house now.", "description": "/aʊ/ MOUTH"},
+    {"slug": "diphthong_oi", "expected_text": "Boy choice noise toy.", "description": "/ɔɪ/ CHOICE"},
+    {"slug": "diphthong_eir", "expected_text": "Air fair hair stare.", "description": "/eɪr/"},
+    {"slug": "diphthong_ir", "expected_text": "Ear hear fear near.", "description": "/ɪr/"},
+    {"slug": "diphthong_ur", "expected_text": "Tour sure pure cure.", "description": "/ʊr/"},
+    {"slug": "stop_voiceless", "expected_text": "Pat tap cap kick.", "description": "Voiceless stops"},
+    {"slug": "stop_voiced", "expected_text": "Bat dab gab dog.", "description": "Voiced stops"},
+    {"slug": "fricative_voiceless", "expected_text": "Fan thin sip ship hush.", "description": "Voiceless fricatives"},
+    {"slug": "fricative_voiced", "expected_text": "Van this zip measure leisure.", "description": "Voiced fricatives"},
+    {"slug": "affricate_mix", "expected_text": "Chip judge cheerful ginger.", "description": "Affricates"},
+    {"slug": "nasal_mix", "expected_text": "Mom named noon moon.", "description": "Nasals"},
+    {"slug": "liquid_glide", "expected_text": "Larry really relied on yellow rails.", "description": "Liquids and glides"},
+    {"slug": "th_cluster", "expected_text": "Think thin thought then those.", "description": "TH voiced/voiceless"},
+    {"slug": "s_z_mix", "expected_text": "Sue sees zoos and says zesty songs.", "description": "S vs Z"},
+    {"slug": "sh_ch_mix", "expected_text": "She chose shiny cheap shoes.", "description": "SH/CH/ZH"},
+    {"slug": "ending_cluster", "expected_text": "Asked past last masked.", "description": "Final clusters"},
+]

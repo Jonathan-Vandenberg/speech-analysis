@@ -179,6 +179,15 @@ _ARPABET_TO_IPA = {
     "T": "t", "TH": "θ", "UH": "ʊ", "UW": "u", "V": "v", "W": "w",
     "Y": "j", "Z": "z", "ZH": "ʒ",
 }
+_IPA_TO_ARPABET: Dict[str, str] = {}
+for arpa, ipa in _ARPABET_TO_IPA.items():
+    if ipa not in _IPA_TO_ARPABET:
+        _IPA_TO_ARPABET[ipa] = arpa
+
+
+def ipa_to_arpabet_symbol(symbol: str) -> Optional[str]:
+    """Rough IPA to ARPAbet conversion for dictionary generation."""
+    return _IPA_TO_ARPABET.get(symbol)
 
 
 def arpabet_tokens_to_ipa(tokens: List[str]) -> List[str]:
@@ -888,6 +897,5 @@ def phonemes_from_audio_wav2vec2(audio_16k: np.ndarray) -> List[str]:
     except Exception as exc:
         logger.warning("wav2vec2 phoneme recognition failed: %s", exc)
         return []
-
 
 

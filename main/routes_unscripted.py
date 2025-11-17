@@ -192,6 +192,10 @@ async def analyze_audio_pronunciation(pred_words: List[str], pred_ipas_words: Li
 
 def load_audio_to_mono16k(data: bytes) -> np.ndarray:
     import librosa
+    import logging
+    logger = logging.getLogger("speech_analyzer")
+    
+    # Try soundfile first (works for WAV, FLAC, etc.)
     try:
         y, sr = sf.read(io.BytesIO(data), dtype="float32", always_2d=False)
         if getattr(y, "ndim", 1) > 1:
@@ -202,27 +206,70 @@ def load_audio_to_mono16k(data: bytes) -> np.ndarray:
         if peak > 0:
             y = 0.9 * (y / peak)
         return y.astype(np.float32)
-    except Exception:
-        pass
-    # Fallback via ffmpeg for webm/ogg/m4a
-    with tempfile.NamedTemporaryFile(suffix=".bin", delete=True) as in_f, \
-         tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as out_f:
-        in_f.write(data)
-        in_f.flush()
-        cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-y", "-i", in_f.name,
-            "-ac", "1", "-ar", "16000",
-            "-f", "wav", out_f.name,
-        ]
-        subprocess.run(cmd, check=True)
-        y, sr = sf.read(out_f.name, dtype="float32", always_2d=False)
-        if getattr(y, "ndim", 1) > 1:
-            y = np.mean(y, axis=1)
+    except Exception as e:
+        logger.debug(f"Soundfile failed to read audio: {e}")
+    
+    # Try librosa directly (supports more formats including webm, m4a, etc.)
+    # Note: librosa uses ffmpeg under the hood for webm, so this may still fail if ffmpeg is broken
+    try:
+        y, sr = librosa.load(io.BytesIO(data), sr=16000, mono=True)
         peak = float(np.max(np.abs(y))) if y.size else 0.0
         if peak > 0:
             y = 0.9 * (y / peak)
         return y.astype(np.float32)
+    except Exception as e:
+        logger.debug(f"Librosa failed to read audio: {e}")
+        # If librosa fails, it might be because it needs ffmpeg for webm
+        # We'll fall through to the ffmpeg fallback
+    
+    # Fallback to ffmpeg (for formats that librosa doesn't support)
+    # Save with a generic extension - ffmpeg will auto-detect the format
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".audio", delete=True) as in_f, \
+             tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as out_f:
+            in_f.write(data)
+            in_f.flush()
+            cmd = [
+                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                "-y", "-i", in_f.name,
+                "-ac", "1", "-ar", "16000",
+                "-f", "wav", out_f.name,
+            ]
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=30)
+            if not os.path.exists(out_f.name) or os.path.getsize(out_f.name) == 0:
+                raise Exception("FFmpeg produced empty output file")
+            y, sr = sf.read(out_f.name, dtype="float32", always_2d=False)
+            if getattr(y, "ndim", 1) > 1:
+                y = np.mean(y, axis=1)
+            peak = float(np.max(np.abs(y))) if y.size else 0.0
+            if peak > 0:
+                y = 0.9 * (y / peak)
+            return y.astype(np.float32)
+    except subprocess.TimeoutExpired:
+        logger.error("FFmpeg conversion timed out after 30 seconds")
+        raise HTTPException(
+            status_code=500,
+            detail="Audio conversion timed out. The audio file may be corrupted or too large."
+        )
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr if e.stderr else (e.stdout if e.stdout else 'Unknown error')
+        logger.error(f"FFmpeg conversion failed: {error_msg}")
+        # Check if it's a library loading issue (macOS) or missing dependency (Linux)
+        if "Library not loaded" in error_msg or "dyld" in error_msg or "No such file" in error_msg:
+            raise HTTPException(
+                status_code=500,
+                detail="Audio conversion failed due to missing system libraries. Please ensure FFmpeg and its dependencies are properly installed. Error: " + error_msg[:200]
+            )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Audio conversion failed. FFmpeg error: {error_msg[:200]}"
+        )
+    except Exception as e:
+        logger.error(f"Audio loading failed with all methods: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not process audio file. Please ensure the file is a valid audio format (WAV, MP3, M4A, WEBM, OGG). Error: {str(e)}"
+        )
 
 
 def phonemize_words(text: str) -> List[List[str]]:

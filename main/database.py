@@ -9,7 +9,12 @@ import logging
 from datetime import datetime, date
 from typing import Optional, Dict, Any, List
 from supabase import create_client, Client
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+try:
+    import boto3  # type: ignore
+except ImportError:  # pragma: no cover
+    boto3 = None  # type: ignore
 
 logger = logging.getLogger("speech_analyzer")
 
@@ -29,11 +34,12 @@ class APIKeyInfo(BaseModel):
     daily_limit: int
     monthly_limit: int
     last_used_at: Optional[datetime]
-    created_at: datetime
+    created_at: Optional[datetime] = None
     # Multi-tenant context (optional)
     tenant_id: Optional[str] = None
 
 class UsageLogData(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     api_key_id: str
     endpoint: str
     method: str = "POST"
@@ -56,6 +62,14 @@ class DatabaseManager:
     def __init__(self):
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_ANON_KEY") 
+        self.reference_bucket = os.getenv("PRONUNCIATION_REFERENCE_BUCKET")
+        self.aws_region = os.getenv("AWS_REGION")
+        self.aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+        self.aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        self.s3_bucket = os.getenv("S3_BUCKET_NAME")
+        self.s3_prefix = os.getenv("PRONUNCIATION_REFERENCE_PREFIX", "pronunciation-references")
+        self.s3_public_base = os.getenv("S3_PUBLIC_BASE_URL")
+        self.s3_client = None
         
         if not self.supabase_url or not self.supabase_key:
             logger.warning("Supabase credentials not found. Database features will be disabled.")
@@ -67,6 +81,15 @@ class DatabaseManager:
             except Exception as e:
                 logger.error(f"Failed to initialize Supabase client: {e}")
                 self.client = None
+
+        if self._can_init_s3():
+            try:
+                self._init_s3_client()
+            except Exception as exc:
+                logger.error(f"Failed to initialize S3 client: {exc}")
+                self.s3_client = None
+        elif self.s3_bucket and not boto3:
+            logger.warning("boto3 not available; S3 uploads disabled.")
     
     def is_available(self) -> bool:
         """Check if database is available."""
@@ -482,6 +505,180 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error updating tenant branding: {e}")
             return False
+
+    async def get_pronunciation_reference(self, question_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch cached pronunciation reference metadata for a question."""
+        if not self.client:
+            return None
+        try:
+            result = (
+                self.client.table("pronunciation_references")
+                .select("*")
+                .eq("question_id", question_id)
+                .limit(1)
+                .execute()
+            )
+            if result.data:
+                return result.data[0]
+        except Exception as err:
+            logger.error(f"Failed to load pronunciation reference for {question_id}: {err}")
+        return None
+
+    async def upsert_pronunciation_reference(
+        self,
+        question_id: str,
+        expected_text: str,
+        text_hash: str,
+        phonemes_json: Dict[str, Any],
+        audio_url: Optional[str],
+        ready: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        """Insert or update a pronunciation reference row."""
+        if not self.client:
+            return None
+        payload = {
+            "question_id": question_id,
+            "expected_text": expected_text,
+            "text_hash": text_hash,
+            "phonemes_json": phonemes_json,
+            "audio_url": audio_url,
+            "ready": ready,
+            "last_generated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        try:
+            result = (
+                self.client.table("pronunciation_references")
+                .upsert(payload, on_conflict="question_id")
+                .execute()
+            )
+            if result.data:
+                return result.data[0]
+        except Exception as err:
+            logger.error(f"Failed to upsert pronunciation reference for {question_id}: {err}")
+        return payload
+
+    async def mark_reference_unready(self, question_id: str) -> bool:
+        """Mark a reference row as needing regeneration."""
+        if not self.client:
+            return False
+        try:
+            self.client.table("pronunciation_references").update({
+                "ready": False,
+                "updated_at": datetime.utcnow().isoformat()
+            }).eq("question_id", question_id).execute()
+            return True
+        except Exception as err:
+            logger.error(f"Failed to mark pronunciation reference stale for {question_id}: {err}")
+            return False
+
+    async def upload_reference_audio(
+        self,
+        question_id: str,
+        text_hash: str,
+        audio_bytes: bytes,
+        content_type: str = "audio/wav",
+    ) -> Optional[str]:
+        """Upload generated reference audio to object storage."""
+        s3_url = await self._upload_reference_audio_s3(question_id, text_hash, audio_bytes, content_type)
+        if s3_url:
+            return s3_url
+        if not self.client or not self.reference_bucket:
+            return None
+        try:
+            storage_client = self.client.storage()
+            path = f"{question_id}/{text_hash}.wav"
+            storage_client.from_(self.reference_bucket).upload(
+                path,
+                audio_bytes,
+                file_options={
+                    "content-type": content_type,
+                    "x-upsert": "true",
+                    "cache-control": "31536000",
+                },
+            )
+            try:
+                public_url = storage_client.from_(self.reference_bucket).get_public_url(path)
+                return public_url
+            except Exception:
+                return path
+        except Exception as err:
+            logger.error(f"Failed to upload reference audio for {question_id}: {err}")
+            return None
+
+    async def _upload_reference_audio_s3(
+        self,
+        question_id: str,
+        text_hash: str,
+        audio_bytes: bytes,
+        content_type: str,
+    ) -> Optional[str]:
+        if not self._ensure_s3_client():
+            return None
+        if not self.s3_bucket:
+            return None
+        key_parts = [self.s3_prefix.strip("/")] if self.s3_prefix else []
+        key_parts.append(question_id.strip("/"))
+        key_parts.append(f"{text_hash}.wav")
+        key = "/".join(part for part in key_parts if part)
+        try:
+            self.s3_client.put_object(
+                Bucket=self.s3_bucket,
+                Key=key,
+                Body=audio_bytes,
+                ContentType=content_type,
+                ACL="public-read",
+                CacheControl="max-age=31536000",
+            )
+            if self.s3_public_base:
+                url = f"{self.s3_public_base.rstrip('/')}/{key}"
+                logger.info(f"Uploaded pronunciation reference audio to S3: {url}")
+                return url
+            region = self.aws_region or "us-east-1"
+            if region == "us-east-1":
+                url = f"https://{self.s3_bucket}.s3.amazonaws.com/{key}"
+            else:
+                url = f"https://{self.s3_bucket}.s3.{region}.amazonaws.com/{key}"
+            logger.info(f"Uploaded pronunciation reference audio to S3: {url}")
+            return url
+        except Exception as err:
+            logger.error(f"Failed to upload reference audio to S3 for {question_id}: {err}")
+            return None
+
+    def _ensure_s3_client(self) -> bool:
+        """Lazy initialize the S3 client in case env vars were added after startup."""
+        if self.s3_client:
+            return True
+        if not self._can_init_s3():
+            return False
+        try:
+            self._init_s3_client()
+            return True
+        except Exception as exc:
+            logger.error(f"S3 client initialization failed: {exc}")
+            self.s3_client = None
+            return False
+
+    def _can_init_s3(self) -> bool:
+        # refresh env values in case they were added later
+        self.aws_access_key_id = self.aws_access_key_id or os.getenv("AWS_ACCESS_KEY_ID")
+        self.aws_secret_access_key = self.aws_secret_access_key or os.getenv("AWS_SECRET_ACCESS_KEY")
+        self.aws_region = self.aws_region or os.getenv("AWS_REGION")
+        self.s3_bucket = self.s3_bucket or os.getenv("S3_BUCKET_NAME")
+        self.s3_prefix = os.getenv("PRONUNCIATION_REFERENCE_PREFIX", self.s3_prefix or "pronunciation-references")
+        self.s3_public_base = os.getenv("S3_PUBLIC_BASE_URL", self.s3_public_base or None)
+        return bool(self.s3_bucket and boto3 and self.aws_access_key_id and self.aws_secret_access_key)
+
+    def _init_s3_client(self):
+        if not boto3:
+            raise RuntimeError("boto3 not installed")
+        self.s3_client = boto3.client(  # type: ignore[attr-defined]
+            "s3",
+            region_name=self.aws_region or "us-east-1",
+            aws_access_key_id=self.aws_access_key_id,
+            aws_secret_access_key=self.aws_secret_access_key,
+        )
+        logger.info("✅ Initialized S3 client for pronunciation references")
 
 # Global database manager instance
 db_manager = DatabaseManager()
